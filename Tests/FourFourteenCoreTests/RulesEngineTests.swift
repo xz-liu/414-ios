@@ -77,6 +77,24 @@ struct RulesEngineTests {
         #expect(!RulesEngine.canBeat(fourFives, fourSixes))
     }
 
+    @Test("finds available 4A4 rocket cards without changing hand order")
+    func findsRocket414Cards() throws {
+        let hand = [
+            c(.four, .hearts, deck: 0),
+            c(.four, .clubs, deck: 0),
+            c(.ace, .spades, deck: 0),
+            c(.ace, .diamonds, deck: 1),
+            c(.four, .diamonds, deck: 1),
+            c(.four, .spades, deck: 1)
+        ]
+
+        let rocket = try #require(hand.rocket414Cards())
+        #expect(rocket.count == 3)
+        #expect(rocket.count(of: .four) == 2)
+        #expect(rocket.count(of: .ace) == 1)
+        #expect(hand.rocket414Count() == 2)
+    }
+
     @Test("legal action enumeration includes reactions and hints use legal cards")
     func hintUsesLegalAction() throws {
         let players = [

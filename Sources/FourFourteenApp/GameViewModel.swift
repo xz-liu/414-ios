@@ -87,23 +87,29 @@ final class GameViewModel: ObservableObject {
     }
 
     var canHint: Bool {
-        isHumanTurn && HintEngine.bestAction(state: state, for: 0) != nil
+        isHumanTurn
     }
 
     var canCha: Bool {
-        guard isHumanTurn, state.prompt.kind == .cha else { return false }
-        return engine.legalActions(for: 0).contains { action in
-            if case .cha = action { return true }
-            return false
-        }
+        guard isHumanTurn, state.prompt.kind == .cha, let rank = state.prompt.baseRank else { return false }
+        return RulesEngine.legalChaCards(in: state.hands[0], rank: rank) != nil
     }
 
     var canGou: Bool {
-        guard isHumanTurn, state.prompt.kind == .gou else { return false }
-        return engine.legalActions(for: 0).contains { action in
-            if case .gou = action { return true }
-            return false
-        }
+        guard isHumanTurn, state.prompt.kind == .gou, let rank = state.prompt.baseRank else { return false }
+        return RulesEngine.legalGouCard(in: state.hands[0], rank: rank) != nil
+    }
+
+    var humanRocket414Cards: [Card]? {
+        humanHand.rocket414Cards()
+    }
+
+    var humanRocket414Count: Int {
+        humanHand.rocket414Count()
+    }
+
+    var canSelectRocket414: Bool {
+        isHumanTurn && humanRocket414Cards != nil
     }
 
     func dealNewGame() {
@@ -131,7 +137,22 @@ final class GameViewModel: ObservableObject {
 
     func select(_ card: Card) {
         guard isHumanTurn else { return }
+        guard !selectedCards.contains(card) else { return }
         selectedCards.insert(card)
+    }
+
+    func select(_ cards: [Card]) {
+        guard isHumanTurn else { return }
+        let newCards = cards.filter { !selectedCards.contains($0) }
+        guard !newCards.isEmpty else { return }
+        selectedCards.formUnion(newCards)
+    }
+
+    func selectRocket414() {
+        guard let cards = humanRocket414Cards else { return }
+        selectedCards = Set(cards)
+        notice = "已选中4A4火箭"
+        audio.play(.tap)
     }
 
     func playSelected() {

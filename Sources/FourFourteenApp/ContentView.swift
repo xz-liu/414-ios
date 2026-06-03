@@ -311,14 +311,21 @@ struct ContentView: View {
                     .background(model.isHumanTurn ? .yellow : .white.opacity(0.14))
                     .foregroundStyle(model.isHumanTurn ? .black : .white)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                if model.humanRocket414Count > 0 {
+                    rocket414Badge
+                }
                 Spacer()
             }
             .foregroundStyle(.white)
 
-            HandSpreadView(cards: model.humanHand, selectedCards: model.selectedCards) { card in
+            HandSpreadView(
+                cards: model.humanHand,
+                selectedCards: model.selectedCards,
+                markedCards: Set(model.humanRocket414Cards ?? [])
+            ) { card in
                 model.toggle(card)
-            } onSelect: { card in
-                model.select(card)
+            } onSelectCards: { cards in
+                model.select(cards)
             }
         }
         .padding(.horizontal, 8)
@@ -331,6 +338,31 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(.white.opacity(0.10), lineWidth: 1)
         )
+    }
+
+    private var rocket414Badge: some View {
+        Button {
+            model.selectRocket414()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 9, weight: .black))
+                Text(model.humanRocket414Count > 1 ? "4A4x\(model.humanRocket414Count)" : "4A4")
+                    .font(.caption2.weight(.black))
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color(red: 0.96, green: 0.62, blue: 0.08))
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(.white.opacity(0.26), lineWidth: 1)
+            )
+            .opacity(model.canSelectRocket414 ? 1 : 0.58)
+        }
+        .buttonStyle(.plain)
+        .disabled(!model.canSelectRocket414)
     }
 
     private var controls: some View {
@@ -534,8 +566,9 @@ private struct TableClothPattern: Shape {
 private struct HandSpreadView: View {
     let cards: [Card]
     let selectedCards: Set<Card>
+    let markedCards: Set<Card>
     let onTap: (Card) -> Void
-    let onSelect: (Card) -> Void
+    let onSelectCards: ([Card]) -> Void
 
     @State private var gestureStart: CGPoint?
     @State private var isSwipeSelecting = false
@@ -550,6 +583,7 @@ private struct HandSpreadView: View {
                     PlayingCardView(
                         card: card,
                         selected: selectedCards.contains(card),
+                        marked: markedCards.contains(card),
                         compact: false,
                         width: metrics.cardWidth,
                         height: metrics.cardHeight
@@ -665,14 +699,18 @@ private struct HandSpreadView: View {
         let start = lastSwipeIndex ?? index
         let lower = min(start, index)
         let upper = max(start, index)
+        var cardsToSelect: [Card] = []
 
         for cardIndex in lower...upper {
             let card = cards[cardIndex]
             guard !swipeSelectedIDs.contains(card.id) else { continue }
             swipeSelectedIDs.insert(card.id)
-            onSelect(card)
+            cardsToSelect.append(card)
         }
 
+        if !cardsToSelect.isEmpty {
+            onSelectCards(cardsToSelect)
+        }
         lastSwipeIndex = index
     }
 }
@@ -737,6 +775,7 @@ private struct ActionBannerView: View {
 private struct PlayingCardView: View {
     let card: Card
     let selected: Bool
+    var marked: Bool = false
     let compact: Bool
     var width: CGFloat? = nil
     var height: CGFloat? = nil
@@ -780,10 +819,20 @@ private struct PlayingCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 7))
         .overlay(
             RoundedRectangle(cornerRadius: 7)
-                .stroke(selected ? Color(red: 0.98, green: 0.77, blue: 0.18) : .black.opacity(0.15), lineWidth: selected ? 3 : 1)
+                .stroke(cardBorderColor, lineWidth: selected ? 3 : (marked ? 2 : 1))
         )
         .shadow(color: .black.opacity(0.28), radius: selected ? 8 : 2, y: selected ? 5 : 1)
         .offset(y: selected ? -9 : 0)
         .animation(.snappy(duration: 0.16), value: selected)
+    }
+
+    private var cardBorderColor: Color {
+        if selected {
+            return Color(red: 0.98, green: 0.77, blue: 0.18)
+        }
+        if marked {
+            return Color(red: 0.96, green: 0.54, blue: 0.08)
+        }
+        return .black.opacity(0.15)
     }
 }

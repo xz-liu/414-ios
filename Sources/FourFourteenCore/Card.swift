@@ -166,6 +166,17 @@ public extension Array where Element == Card {
         count(of: .four) >= 2 && count(of: .ace) >= 1
     }
 
+    func rocket414Cards() -> [Card]? {
+        let fours = sortedForHand().filter { $0.rank == .four }
+        let aces = sortedForHand().filter { $0.rank == .ace }
+        guard fours.count >= 2, let ace = aces.first else { return nil }
+        return (Array(fours.prefix(2)) + [ace]).sortedForHand()
+    }
+
+    func rocket414Count() -> Int {
+        Swift.min(count(of: .four) / 2, count(of: .ace))
+    }
+
     func containsDoubleJoker() -> Bool {
         count(of: .smallJoker) >= 1 && count(of: .bigJoker) >= 1
     }
