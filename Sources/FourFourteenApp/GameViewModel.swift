@@ -30,9 +30,20 @@ final class GameViewModel: ObservableObject {
     @Published var actionBanner: ActionBanner?
     @Published var phase: GamePhase = .waiting
     @Published var visibleHandCounts: [Int] = [0, 0, 0, 0]
+    @Published var soundEnabled = true {
+        didSet {
+            audio.effectsEnabled = soundEnabled
+        }
+    }
+    @Published var musicEnabled = false {
+        didSet {
+            audio.setMusicEnabled(musicEnabled)
+        }
+    }
 
     private(set) var engine: GameEngine
     private var isAdvancingAI = false
+    private let audio = AudioController()
 
     init() {
         self.engine = GameEngine(deckCount: 1)
@@ -100,6 +111,7 @@ final class GameViewModel: ObservableObject {
         selectedCards.removeAll()
         notice = ""
         actionBanner = nil
+        audio.play(.shuffle)
         engine = GameEngine(deckCount: deckCount)
         visibleHandCounts = [0, 0, 0, 0]
         phase = .dealing
@@ -109,11 +121,17 @@ final class GameViewModel: ObservableObject {
 
     func toggle(_ card: Card) {
         guard isHumanTurn else { return }
+        audio.play(.tap)
         if selectedCards.contains(card) {
             selectedCards.remove(card)
         } else {
             selectedCards.insert(card)
         }
+    }
+
+    func select(_ card: Card) {
+        guard isHumanTurn else { return }
+        selectedCards.insert(card)
     }
 
     func playSelected() {
@@ -153,10 +171,23 @@ final class GameViewModel: ObservableObject {
     func hint() {
         guard let action = HintEngine.bestAction(state: state, for: 0) else {
             notice = "当前没有可提示的牌"
+            audio.play(.error)
             return
         }
         selectedCards = Set(action.cards)
         notice = "已选中推荐牌"
+        audio.play(.tap)
+    }
+
+    func toggleSound() {
+        soundEnabled.toggle()
+        if soundEnabled {
+            audio.play(.tap)
+        }
+    }
+
+    func toggleMusic() {
+        musicEnabled.toggle()
     }
 
     func statusText(for playerIndex: Int) -> String {
@@ -218,6 +249,7 @@ private extension GameViewModel {
             }
 
             notice = "发牌完成"
+            audio.play(.draw)
             actionBanner = ActionBanner(text: "开始", subtitle: promptSummary, kind: .deal)
             try? await Task.sleep(nanoseconds: 850_000_000)
             phase = .playing
@@ -237,11 +269,13 @@ private extension GameViewModel {
             notice = ""
             if engine.state.eventLog.count > eventCountBefore {
                 showBannerFromLatestEvent()
+                playSoundForLatestEvent()
             }
             objectWillChange.send()
             advanceAIIfNeeded()
         } catch {
             notice = message(for: error)
+            audio.play(.error)
         }
     }
 
@@ -250,26 +284,33 @@ private extension GameViewModel {
         isAdvancingAI = true
         Task { @MainActor in
             defer { isAdvancingAI = false }
-            let ai = AIPlayer()
             while let playerIndex = engine.state.prompt.playerIndex,
                   phase == .playing,
                   !engine.state.players[playerIndex].isHuman,
                   !engine.state.isGameOver {
                 notice = "\(engine.state.players[playerIndex].name)思考中..."
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                let action = ai.chooseAction(state: engine.state, for: playerIndex)
+                let snapshot = engine.state
+                let action = await Task.detached(priority: .userInitiated) {
+                    AIPlayer().chooseAction(state: snapshot, for: playerIndex)
+                }.value
+                guard phase == .playing, engine.state == snapshot else {
+                    continue
+                }
                 do {
                     let eventCountBefore = engine.state.eventLog.count
                     try engine.apply(action)
                     notice = ""
                     if engine.state.eventLog.count > eventCountBefore {
                         showBannerFromLatestEvent(autoClear: false)
+                        playSoundForLatestEvent()
                     }
                     objectWillChange.send()
                     let pause = latestEventIsReaction ? 1_850_000_000 : 1_250_000_000
                     try? await Task.sleep(nanoseconds: UInt64(pause))
                 } catch {
                     notice = message(for: error)
+                    audio.play(.error)
                     break
                 }
             }
@@ -326,6 +367,24 @@ private extension GameViewModel {
     var latestEventIsReaction: Bool {
         guard let kind = engine.state.eventLog.last?.kind else { return false }
         return kind == .cha || kind == .gou
+    }
+
+    func playSoundForLatestEvent() {
+        guard let record = engine.state.eventLog.last else { return }
+        switch record.kind {
+        case .normal:
+            audio.play(.playcard)
+        case .pass:
+            audio.play(.pass)
+        case .cha, .gou:
+            audio.play(.reaction)
+        case .system:
+            if record.message.contains("死叉") || record.message.contains("重新起手") {
+                audio.play(.reaction)
+            } else {
+                audio.play(.tap)
+            }
+        }
     }
 
     var promptSummary: String {

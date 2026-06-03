@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import FourFourteenCore
 
@@ -183,6 +184,39 @@ struct GameEngineTests {
         #expect(action == .play([card(.king, .clubs)]))
     }
 
+    @Test("AI follows with a duplicate rank when that preserves a straight")
+    func aiUsesDuplicateSingleToPreserveStraight() {
+        let safeSix = card(.six, .clubs)
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [],
+                [
+                    card(.three, .hearts),
+                    card(.four, .hearts),
+                    card(.five, .hearts),
+                    safeSix,
+                    card(.six, .hearts),
+                    card(.seven, .hearts)
+                ],
+                [],
+                []
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(kind: .single, cards: [card(.four, .clubs)], primaryRank: .four),
+                kind: .normal,
+                message: "Human出单张"
+            )
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        #expect(action == .play([safeSix]))
+    }
+
     @Test("AI leads with a complete straight instead of peeling one card from it")
     func aiLeadsWithStraightWhenItReducesHandBurden() {
         let state = GameState(
@@ -207,6 +241,39 @@ struct GameEngineTests {
         let action = AIPlayer().chooseAction(state: state, for: 1)
         let playedRanks = action.cards.map(\.rank)
         #expect(playedRanks == [.three, .four, .five, .six, .seven])
+    }
+
+    @Test("AI splits overlapping straight material into two playable runs")
+    func aiSplitsOverlappingRuns() throws {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [],
+                [
+                    card(.three, .hearts),
+                    card(.four, .hearts),
+                    card(.five, .clubs),
+                    card(.five, .hearts),
+                    card(.six, .clubs),
+                    card(.six, .hearts),
+                    card(.seven, .hearts),
+                    card(.eight, .hearts),
+                    card(.nine, .hearts)
+                ],
+                [],
+                []
+            ],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 1)
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        #expect(action.cards.map(\.rank) == [.three, .four, .five, .six])
+
+        let remaining = state.hands[1].removingForTest(action.cards)
+        let next = try #require(RulesEngine.classify(remaining))
+        #expect(next.kind == .singleRun)
+        #expect(next.sequenceLength == 5)
     }
 
     @Test("reaction pass is silent but normal follow pass remains public")
@@ -381,10 +448,74 @@ struct GameEngineTests {
         #expect(action == .play([two]))
     }
 
+    @Test("AI chooses legal actions promptly for multi deck opening hands")
+    func aiChoosesPromptlyForMultiDeckOpeningHands() throws {
+        let ai = AIPlayer()
+
+        for deckCount in 2...4 {
+            let deck = DeckConfig(deckCount: deckCount).makeDeck()
+            let engine = GameEngine(deckCount: deckCount, deck: deck)
+            let playerIndex = try #require(engine.state.prompt.playerIndex)
+
+            let start = Date()
+            let action = ai.chooseAction(state: engine.state, for: playerIndex)
+            let elapsed = Date().timeIntervalSince(start)
+
+            #expect(engine.legalActions(for: playerIndex).contains(action))
+            #expect(elapsed < 1.5, "\(deckCount) decks took \(elapsed)s")
+        }
+    }
+
+    @Test("AI chooses legal follow actions promptly for multi deck hands")
+    func aiChoosesPromptlyForMultiDeckFollowHands() throws {
+        let ai = AIPlayer()
+
+        for deckCount in 2...4 {
+            var hands = GameEngine.deal(
+                deck: DeckConfig(deckCount: deckCount).makeDeck(),
+                playerCount: Self.players.count
+            )
+            let previousIndex = try #require(hands[0].firstIndex { $0.rank == .three })
+            let previousCard = hands[0].remove(at: previousIndex)
+            let state = GameState(
+                deckCount: deckCount,
+                players: Self.players,
+                hands: hands,
+                prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+                lastPlayableRecord: PlayRecord(
+                    playerIndex: 0,
+                    playerName: "Human",
+                    combination: Combination(kind: .single, cards: [previousCard], primaryRank: .three),
+                    kind: .normal,
+                    message: "Human出单张"
+                )
+            )
+
+            let start = Date()
+            let action = ai.chooseAction(state: state, for: 1)
+            let elapsed = Date().timeIntervalSince(start)
+
+            #expect(ai.legalActions(from: state, for: 1).contains(action))
+            #expect(elapsed < 1.5, "\(deckCount) decks follow took \(elapsed)s")
+        }
+    }
+
     private static let players = [
         GamePlayer(name: "Human", isHuman: true),
         GamePlayer(name: "AI1", isHuman: false),
         GamePlayer(name: "AI2", isHuman: false),
         GamePlayer(name: "AI3", isHuman: false)
     ]
+}
+
+private extension Array where Element == Card {
+    func removingForTest(_ cards: [Card]) -> [Card] {
+        var remaining = self
+        for card in cards {
+            if let index = remaining.firstIndex(of: card) {
+                remaining.remove(at: index)
+            }
+        }
+        return remaining
+    }
 }

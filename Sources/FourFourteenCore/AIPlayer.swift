@@ -13,7 +13,8 @@ public struct AIPlayer: Sendable {
             return finishing
         }
 
-        var evaluator = AIEvaluator(state: state, playerIndex: playerIndex, actions: actions)
+        let candidates = boundedCandidateActions(actions, state: state, playerIndex: playerIndex)
+        var evaluator = AIEvaluator(state: state, playerIndex: playerIndex, actions: candidates)
         return evaluator.chooseBestAction()
     }
 
@@ -41,6 +42,171 @@ public struct AIPlayer: Sendable {
         case .gameOver:
             return []
         }
+    }
+
+    private func boundedCandidateActions(
+        _ actions: [PlayerAction],
+        state: GameState,
+        playerIndex: Int
+    ) -> [PlayerAction] {
+        guard state.deckCount > 1 else { return actions }
+        guard state.prompt.kind == .lead || state.prompt.kind == .follow else { return actions }
+
+        let passActions = actions.filter(\.cards.isEmpty)
+        let playActions = actions.filter { !$0.cards.isEmpty }
+        let handCount = state.hands[playerIndex].count
+        let limit = candidateLimit(handCount: handCount, prompt: state.prompt.kind)
+        guard playActions.count > limit else { return actions }
+
+        let ranked = playActions.map { action in
+            let combination = RulesEngine.classify(action.cards)
+            return (
+                action: action,
+                combination: combination,
+                score: quickActionScore(action, combination: combination, state: state, playerIndex: playerIndex)
+            )
+        }
+        .sorted {
+            if $0.score != $1.score {
+                return $0.score > $1.score
+            }
+            return $0.action.cards.count > $1.action.cards.count
+        }
+
+        var selected: [PlayerAction] = []
+        var seen = Set<PlayerAction>()
+        func append(_ action: PlayerAction) {
+            guard !seen.contains(action) else { return }
+            seen.insert(action)
+            selected.append(action)
+        }
+
+        ranked.prefix(limit).map(\.action).forEach(append)
+
+        for kind in priorityKinds {
+            if let action = ranked.first(where: { $0.combination?.kind == kind })?.action {
+                append(action)
+            }
+        }
+
+        passActions.forEach(append)
+        return selected
+    }
+
+    private func candidateLimit(handCount: Int, prompt: PromptKind) -> Int {
+        switch (prompt, handCount) {
+        case (.lead, 40...):
+            return 28
+        case (.follow, 40...):
+            return 36
+        case (.lead, 20...):
+            return 30
+        case (.follow, 20...):
+            return 40
+        default:
+            return 56
+        }
+    }
+
+    private var priorityKinds: [CombinationKind] {
+        [
+            .singleRun,
+            .pairRun,
+            .single,
+            .pair,
+            .triadWithSingle,
+            .triadWithPair,
+            .sameRankBomb,
+            .doubleJoker,
+            .rocket414
+        ]
+    }
+
+    private func quickActionScore(
+        _ action: PlayerAction,
+        combination: Combination?,
+        state: GameState,
+        playerIndex: Int
+    ) -> Int {
+        guard let combination else { return -100_000 }
+        let hand = state.hands[playerIndex]
+        let remaining = hand.removing(action.cards)
+        let handCount = state.hands[playerIndex].count
+        let rank = combination.primaryRank?.rawValue ?? 0
+        let targetIsClose = state.lastPlayableRecord.map {
+            $0.playerIndex != playerIndex && state.hands[$0.playerIndex].count <= 2
+        } ?? false
+
+        var score = action.cards.count * 45 - rank * 10
+        switch combination.kind {
+        case .singleRun:
+            score += 3_200 + combination.sequenceLength * 210
+            let nextRunLength = bestSingleRunLength(in: remaining)
+            if nextRunLength >= 3 {
+                score += 850 + nextRunLength * 70
+            } else if combination.sequenceLength >= 6,
+                      duplicateRanksUsed(by: action.cards, in: hand) >= 2 {
+                score -= 900
+            }
+        case .pairRun:
+            score += 3_600 + combination.sequenceLength * 250
+        case .single:
+            score += 700 - rank * 18
+            if let primaryRank = combination.primaryRank,
+               hand.count(of: primaryRank) > 1,
+               bestSingleRunLength(in: remaining) >= bestSingleRunLength(in: hand) {
+                score += 360
+            }
+        case .pair:
+            score += 880 - rank * 16
+        case .triadWithSingle:
+            score += handCount <= 8 ? 1_400 : 180
+        case .triadWithPair:
+            score += handCount <= 8 ? 1_650 : 240
+        case .sameRankBomb:
+            score += targetIsClose ? 1_200 : -1_600
+            score -= combination.sameRankCount * 110
+        case .doubleJoker, .rocket414:
+            score += targetIsClose ? 1_600 : -2_200
+        case .cha, .gou:
+            break
+        }
+
+        if state.prompt.kind == .follow {
+            score += 550
+            if combination.isBombLike, !targetIsClose {
+                score -= 1_700
+            }
+        }
+
+        if action.cards.contains(where: { $0.rank == .two || $0.rank == .smallJoker || $0.rank == .bigJoker }),
+           !targetIsClose,
+           handCount > 5 {
+            score -= 1_250
+        }
+
+        return score
+    }
+
+    private func bestSingleRunLength(in cards: [Card]) -> Int {
+        let groups = Dictionary(grouping: cards, by: \.rank)
+        var best = 0
+        var current = 0
+        for rank in Rank.runRanks {
+            if (groups[rank]?.count ?? 0) >= 1 {
+                current += 1
+                if current >= 3 {
+                    best = max(best, current)
+                }
+            } else {
+                current = 0
+            }
+        }
+        return best
+    }
+
+    private func duplicateRanksUsed(by cards: [Card], in hand: [Card]) -> Int {
+        Set(cards.map(\.rank)).filter { hand.count(of: $0) > 1 }.count
     }
 }
 
@@ -89,6 +255,7 @@ private struct AIEvaluator {
             - structureCost(action, combination: combination, before: before, after: after)
             - counterRisk(action, combination: combination)
             - overkillPenalty(action, combination: combination)
+            - greedyRunPenalty(action, combination: combination, before: before, after: after)
             + endgameBonus(action, remaining: remaining)
     }
 
@@ -164,7 +331,45 @@ private struct AIEvaluator {
             }
         }
 
+        benefit += productiveShapeBenefit(action, combination: combination, before: before, after: after)
         return benefit
+    }
+
+    func productiveShapeBenefit(
+        _ action: PlayerAction,
+        combination: Combination?,
+        before: PlanMetrics,
+        after: PlanMetrics
+    ) -> Int {
+        guard let combination else { return 0 }
+        var bonus = 0
+
+        switch combination.kind {
+        case .single:
+            if let rank = combination.primaryRank,
+               hand.count(of: rank) > 1,
+               before.bestSingleRunLength >= 3,
+               after.bestSingleRunLength >= before.bestSingleRunLength {
+                bonus += 340
+            }
+        case .singleRun:
+            if after.estimatedTurns == 1, after.bestSingleRunLength >= 3 {
+                bonus += 520 + after.bestSingleRunLength * 55
+            }
+            if before.bestSingleRunLength >= 5,
+               after.bestSingleRunLength >= 3,
+               duplicateRanksUsed(by: action.cards) >= 1 {
+                bonus += 260
+            }
+        case .pairRun:
+            if after.estimatedTurns == 1, after.bestPairRunLength >= 3 {
+                bonus += 560 + after.bestPairRunLength * 65
+            }
+        default:
+            break
+        }
+
+        return bonus
     }
 
     func resourceCost(_ action: PlayerAction, combination: Combination?) -> Int {
@@ -351,6 +556,21 @@ private struct AIEvaluator {
         return penalty
     }
 
+    func greedyRunPenalty(
+        _ action: PlayerAction,
+        combination: Combination?,
+        before: PlanMetrics,
+        after: PlanMetrics
+    ) -> Int {
+        guard let combination else { return 0 }
+        guard combination.kind == .singleRun else { return 0 }
+        guard combination.sequenceLength >= 6 else { return 0 }
+        guard duplicateRanksUsed(by: action.cards) >= 2 else { return 0 }
+        guard after.bestSingleRunLength < 3 else { return 0 }
+        guard before.estimatedTurns - after.estimatedTurns <= 0 else { return 0 }
+        return 560
+    }
+
     func endgameBonus(_ action: PlayerAction, remaining: [Card]) -> Int {
         var bonus = 0
         if remaining.count <= 3 {
@@ -399,7 +619,9 @@ private struct AIEvaluator {
             estimatedTurns: estimatedTurns(for: cards),
             singletonCount: groups.values.filter { $0.count == 1 }.count,
             controlValue: controlValue(cards),
-            structureValue: structureValue(cards)
+            structureValue: structureValue(cards),
+            bestSingleRunLength: bestRunLength(groups: groups, repeatCount: 1),
+            bestPairRunLength: bestRunLength(groups: groups, repeatCount: 2)
         )
         metricsCache[key] = metrics
         return metrics
@@ -408,6 +630,9 @@ private struct AIEvaluator {
     func estimatedTurns(for cards: [Card]) -> Int {
         guard !cards.isEmpty else { return 0 }
         if RulesEngine.classify(cards) != nil { return 1 }
+        if shouldUseFastTurnEstimate(cards) {
+            return fastTurnEstimate(cards)
+        }
 
         let best = greedyTurnEstimate(cards)
         var frontier = [SearchNode(cards: cards.sortedForHand(), turns: 0)]
@@ -449,6 +674,132 @@ private struct AIEvaluator {
         }
 
         return best
+    }
+
+    func shouldUseFastTurnEstimate(_ cards: [Card]) -> Bool {
+        cards.count > 30 || (state.deckCount > 1 && cards.count > 18)
+    }
+
+    func fastTurnEstimate(_ cards: [Card]) -> Int {
+        var counts = Dictionary(grouping: cards, by: \.rank).mapValues(\.count)
+        var turns = 0
+
+        while consumeBestRun(from: &counts, repeatCount: 2) {
+            turns += 1
+        }
+        while consumeBestRun(from: &counts, repeatCount: 1) {
+            turns += 1
+        }
+
+        let doubleJokers = min(counts[.smallJoker] ?? 0, counts[.bigJoker] ?? 0)
+        if doubleJokers > 0 {
+            turns += doubleJokers
+            counts[.smallJoker] = (counts[.smallJoker] ?? 0) - doubleJokers
+            counts[.bigJoker] = (counts[.bigJoker] ?? 0) - doubleJokers
+        }
+
+        for rank in Rank.allCases {
+            let count = counts[rank] ?? 0
+            guard count > 0 else { continue }
+            turns += 1
+        }
+
+        return max(1, turns)
+    }
+
+    func consumeBestRun(from counts: inout [Rank: Int], repeatCount: Int) -> Bool {
+        guard let (start, end) = bestRunToConsume(counts: counts, repeatCount: repeatCount) else { return false }
+        for rank in Rank.runRanks[start...end] {
+            counts[rank] = (counts[rank] ?? 0) - repeatCount
+        }
+        return true
+    }
+
+    func bestRunToConsume(counts: [Rank: Int], repeatCount: Int) -> (start: Int, end: Int)? {
+        var best: (start: Int, end: Int, projectedTurns: Int)?
+        let ranks = Rank.runRanks
+
+        for start in ranks.indices {
+            var end = start
+            while end < ranks.count, (counts[ranks[end]] ?? 0) >= repeatCount {
+                let length = end - start + 1
+                if length >= 3 {
+                    var simulated = counts
+                    for rank in ranks[start...end] {
+                        simulated[rank] = (simulated[rank] ?? 0) - repeatCount
+                    }
+                    let projected = cheapResidualTurnEstimate(simulated)
+                    if best == nil ||
+                        projected < best!.projectedTurns ||
+                        (projected == best!.projectedTurns && length > best!.end - best!.start + 1) ||
+                        (projected == best!.projectedTurns &&
+                            length == best!.end - best!.start + 1 &&
+                            start < best!.start) {
+                        best = (start, end, projected)
+                    }
+                }
+                end += 1
+            }
+        }
+
+        guard let best else { return nil }
+        return (best.start, best.end)
+    }
+
+    func cheapResidualTurnEstimate(_ counts: [Rank: Int]) -> Int {
+        var remaining = counts
+        var turns = 0
+        while consumeLongestRun(from: &remaining, repeatCount: 2) {
+            turns += 1
+        }
+        while consumeLongestRun(from: &remaining, repeatCount: 1) {
+            turns += 1
+        }
+
+        let doubleJokers = min(remaining[.smallJoker] ?? 0, remaining[.bigJoker] ?? 0)
+        if doubleJokers > 0 {
+            turns += doubleJokers
+            remaining[.smallJoker] = (remaining[.smallJoker] ?? 0) - doubleJokers
+            remaining[.bigJoker] = (remaining[.bigJoker] ?? 0) - doubleJokers
+        }
+
+        for rank in Rank.allCases where (remaining[rank] ?? 0) > 0 {
+            turns += 1
+        }
+        return turns
+    }
+
+    func consumeLongestRun(from counts: inout [Rank: Int], repeatCount: Int) -> Bool {
+        var bestStart: Int?
+        var bestEnd: Int?
+        var currentStart: Int?
+
+        for index in Rank.runRanks.indices {
+            let rank = Rank.runRanks[index]
+            if (counts[rank] ?? 0) >= repeatCount {
+                if currentStart == nil {
+                    currentStart = index
+                }
+                if let start = currentStart {
+                    let length = index - start + 1
+                    let bestLength = bestStart.flatMap { bestStart in
+                        bestEnd.map { $0 - bestStart + 1 }
+                    } ?? 0
+                    if length >= 3 && length > bestLength {
+                        bestStart = start
+                        bestEnd = index
+                    }
+                }
+            } else {
+                currentStart = nil
+            }
+        }
+
+        guard let bestStart, let bestEnd else { return false }
+        for rank in Rank.runRanks[bestStart...bestEnd] {
+            counts[rank] = (counts[rank] ?? 0) - repeatCount
+        }
+        return true
     }
 
     func greedyTurnEstimate(_ cards: [Card]) -> Int {
@@ -567,6 +918,28 @@ private struct AIEvaluator {
 
         return best
     }
+
+    func bestRunLength(groups: [Rank: [Card]], repeatCount: Int) -> Int {
+        var best = 0
+        var currentLength = 0
+
+        for rank in Rank.runRanks {
+            if (groups[rank]?.count ?? 0) >= repeatCount {
+                currentLength += 1
+                if currentLength >= 3 {
+                    best = max(best, currentLength)
+                }
+            } else {
+                currentLength = 0
+            }
+        }
+
+        return best
+    }
+
+    func duplicateRanksUsed(by cards: [Card]) -> Int {
+        Set(cards.map(\.rank)).filter { hand.count(of: $0) > 1 }.count
+    }
 }
 
 private struct PlanMetrics {
@@ -574,6 +947,8 @@ private struct PlanMetrics {
     let singletonCount: Int
     let controlValue: Int
     let structureValue: Int
+    let bestSingleRunLength: Int
+    let bestPairRunLength: Int
 }
 
 private struct SearchNode {

@@ -14,7 +14,8 @@ struct ContentView: View {
                     bottomRow
                 }
                 .padding(.horizontal, horizontalPadding(for: proxy.size))
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                .padding(.bottom, bottomInteractionPadding(for: proxy.safeAreaInsets.bottom))
             }
             if let banner = model.actionBanner {
                 ActionBannerView(banner: banner)
@@ -26,23 +27,38 @@ struct ContentView: View {
     }
 
     private var tableBackground: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.04, green: 0.32, blue: 0.20),
-                Color(red: 0.02, green: 0.17, blue: 0.13)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.03, green: 0.28, blue: 0.20),
+                    Color(red: 0.05, green: 0.10, blue: 0.18),
+                    Color(red: 0.21, green: 0.05, blue: 0.08)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            TableClothPattern()
+                .stroke(.white.opacity(0.035), lineWidth: 1)
+            LinearGradient(
+                colors: [.black.opacity(0.32), .clear, .black.opacity(0.28)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
         .ignoresSafeArea()
     }
 
     private var topBar: some View {
-        HStack(spacing: 10) {
-            Text("414 Poker")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
+        HStack(spacing: 8) {
+            HStack(spacing: 5) {
+                Text("414")
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.yellow)
+                Text("Poker")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+            .frame(width: 76, alignment: .leading)
 
             Text(promptText)
                 .font(.subheadline.weight(.semibold))
@@ -68,25 +84,41 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .tint(.orange)
             .disabled(model.isDealing)
+
+            topIconButton(
+                icon: model.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                active: model.soundEnabled
+            ) {
+                model.toggleSound()
+            }
+            topIconButton(
+                icon: model.musicEnabled ? "music.note" : "music.note.slash",
+                active: model.musicEnabled
+            ) {
+                model.toggleMusic()
+            }
         }
         .frame(height: 36)
     }
 
     private var tableRow: some View {
-        ZStack {
-            VStack(spacing: 8) {
-                topAI(index: 2)
-                tableCenter
-            }
-            .padding(.horizontal, 58)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack(alignment: .top) {
+            tableCenter
+                .padding(.horizontal, 56)
+                .padding(.top, 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            topAI(index: 2)
+                .zIndex(2)
 
             HStack {
                 sideAI(index: 1)
                 Spacer(minLength: 0)
                 sideAI(index: 3)
             }
-            .padding(.top, 42)
+            .padding(.horizontal, 58)
+            .padding(.top, 18)
+            .zIndex(2)
         }
     }
 
@@ -110,17 +142,17 @@ struct ContentView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.black.opacity(0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(tableSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(.white.opacity(0.16), lineWidth: 1)
         )
         )
     }
 
     private var preGamePanel: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Text(model.isDealing ? "正在发牌" : "准备开始")
                 .font(.title2.weight(.black))
                 .foregroundStyle(.white)
@@ -137,8 +169,12 @@ struct ContentView: View {
                             .foregroundStyle(.yellow)
                     }
                     .frame(width: 62, height: 58)
-                    .background(.black.opacity(0.18))
+                    .background(.black.opacity(0.22))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.white.opacity(0.12), lineWidth: 1)
+                    )
                 }
             }
 
@@ -163,11 +199,11 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.black.opacity(0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(tableSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(.white.opacity(0.16), lineWidth: 1)
         )
     }
 
@@ -215,8 +251,12 @@ struct ContentView: View {
         }
         .padding(8)
         .frame(maxHeight: .infinity)
-        .background(.black.opacity(0.18))
+        .background(.black.opacity(0.20))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var scoreView: some View {
@@ -242,8 +282,12 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .background(.black.opacity(0.18))
+        .background(.black.opacity(0.20))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var bottomRow: some View {
@@ -252,7 +296,7 @@ struct ContentView: View {
                 .frame(maxWidth: 560)
             handArea
         }
-        .frame(height: 152)
+        .frame(height: 164)
     }
 
     private var handArea: some View {
@@ -273,25 +317,37 @@ struct ContentView: View {
 
             HandSpreadView(cards: model.humanHand, selectedCards: model.selectedCards) { card in
                 model.toggle(card)
+            } onSelect: { card in
+                model.select(card)
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.top, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.black.opacity(0.20))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var controls: some View {
         HStack(spacing: 7) {
-            actionButton("提示", icon: "lightbulb.fill", enabled: model.canHint) {
+            actionButton("提示", icon: "lightbulb.fill", enabled: model.canHint, tint: Color(red: 0.20, green: 0.48, blue: 0.95)) {
                 model.hint()
             }
-            actionButton("过", icon: "arrowshape.turn.up.forward.fill", enabled: model.canPass) {
+            actionButton("过", icon: "arrowshape.turn.up.forward.fill", enabled: model.canPass, tint: Color(red: 0.34, green: 0.38, blue: 0.45)) {
                 model.pass()
             }
-            actionButton("叉", icon: "multiply", enabled: model.canCha) {
+            actionButton("叉", icon: "multiply", enabled: model.canCha, tint: Color(red: 0.82, green: 0.12, blue: 0.08)) {
                 model.cha()
             }
-            actionButton("勾", icon: "checkmark", enabled: model.canGou) {
+            actionButton("勾", icon: "checkmark", enabled: model.canGou, tint: Color(red: 0.92, green: 0.47, blue: 0.08)) {
                 model.gou()
             }
-            actionButton("出牌", icon: "paperplane.fill", enabled: model.canPlay) {
+            actionButton("出牌", icon: "paperplane.fill", enabled: model.canPlay, tint: Color(red: 0.03, green: 0.45, blue: 0.26)) {
                 model.playSelected()
             }
         }
@@ -299,12 +355,12 @@ struct ContentView: View {
 
     private func sideAI(index: Int) -> some View {
         playerPanel(index: index)
-            .frame(width: 74, height: 54)
+            .frame(width: 68, height: 48)
     }
 
     private func topAI(index: Int) -> some View {
         playerPanel(index: index)
-            .frame(width: 132, height: 44)
+            .frame(width: 126, height: 40)
     }
 
     private func playerPanel(index: Int) -> some View {
@@ -329,18 +385,23 @@ struct ContentView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(highlighted ? Color.yellow : Color.white.opacity(0.10))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(highlighted ? Color(red: 0.97, green: 0.77, blue: 0.22) : Color.black.opacity(0.25))
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(0.15), lineWidth: 1)
+                .stroke(highlighted ? .white.opacity(0.40) : .white.opacity(0.15), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(highlighted ? 0.32 : 0.16), radius: highlighted ? 8 : 3, y: 2)
     }
 
     private func actionButton(
         _ title: String,
         icon: String,
         enabled: Bool,
+        tint: Color,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -350,14 +411,56 @@ struct ContentView: View {
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity)
                 .frame(height: 34)
+                .foregroundStyle(enabled ? .white : .white.opacity(0.55))
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(enabled ? tint : Color.white.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.white.opacity(enabled ? 0.24 : 0.08), lineWidth: 1)
+                )
         }
-        .buttonStyle(.borderedProminent)
-        .tint(enabled ? .blue : .gray)
+        .buttonStyle(.plain)
         .disabled(!enabled)
+    }
+
+    private func topIconButton(icon: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(active ? .black : .white.opacity(0.82))
+                .frame(width: 34, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(active ? Color(red: 0.96, green: 0.74, blue: 0.22) : Color.white.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.white.opacity(0.18), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var tableSurface: some ShapeStyle {
+        LinearGradient(
+            colors: [
+                Color(red: 0.02, green: 0.36, blue: 0.23).opacity(0.88),
+                Color(red: 0.01, green: 0.20, blue: 0.17).opacity(0.92),
+                Color(red: 0.10, green: 0.13, blue: 0.20).opacity(0.88)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private func horizontalPadding(for size: CGSize) -> CGFloat {
         size.width > 760 ? 14 : 8
+    }
+
+    private func bottomInteractionPadding(for safeAreaBottom: CGFloat) -> CGFloat {
+        max(22, safeAreaBottom + 18)
     }
 
     private var dealButtonTitle: String {
@@ -405,10 +508,39 @@ struct ContentView: View {
     }
 }
 
+private struct TableClothPattern: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let spacing: CGFloat = 30
+
+        var x = rect.minX - rect.height
+        while x < rect.maxX + rect.height {
+            path.move(to: CGPoint(x: x, y: rect.minY))
+            path.addLine(to: CGPoint(x: x + rect.height, y: rect.maxY))
+            x += spacing
+        }
+
+        var y = rect.minY - rect.width
+        while y < rect.maxY + rect.width {
+            path.move(to: CGPoint(x: rect.minX, y: y))
+            path.addLine(to: CGPoint(x: rect.maxX, y: y + rect.width))
+            y += spacing
+        }
+
+        return path
+    }
+}
+
 private struct HandSpreadView: View {
     let cards: [Card]
     let selectedCards: Set<Card>
     let onTap: (Card) -> Void
+    let onSelect: (Card) -> Void
+
+    @State private var gestureStart: CGPoint?
+    @State private var isSwipeSelecting = false
+    @State private var swipeSelectedIDs: Set<String> = []
+    @State private var lastSwipeIndex: Int?
 
     var body: some View {
         GeometryReader { proxy in
@@ -422,12 +554,27 @@ private struct HandSpreadView: View {
                         width: metrics.cardWidth,
                         height: metrics.cardHeight
                     )
-                    .onTapGesture {
-                        onTap(card)
-                    }
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        handleGestureChange(
+                            value,
+                            width: proxy.size.width,
+                            metrics: metrics
+                        )
+                    }
+                    .onEnded { value in
+                        handleGestureEnd(
+                            value,
+                            width: proxy.size.width,
+                            metrics: metrics
+                        )
+                    }
+            )
         }
     }
 
@@ -449,6 +596,84 @@ private struct HandSpreadView: View {
         let visibleStep = (width - cardWidth) / CGFloat(count - 1)
         let spacing = min(3, visibleStep - cardWidth)
         return (cardWidth, cardHeight, spacing)
+    }
+
+    private func handleGestureChange(
+        _ value: DragGesture.Value,
+        width: CGFloat,
+        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+    ) {
+        if gestureStart == nil {
+            gestureStart = value.startLocation
+        }
+
+        let horizontalDistance = abs(value.location.x - value.startLocation.x)
+        let verticalDistance = abs(value.location.y - value.startLocation.y)
+        if horizontalDistance > 10 || verticalDistance > 10 {
+            isSwipeSelecting = true
+        }
+
+        guard isSwipeSelecting,
+              let index = cardIndex(at: value.location, width: width, metrics: metrics)
+        else { return }
+
+        selectRange(endingAt: index)
+    }
+
+    private func handleGestureEnd(
+        _ value: DragGesture.Value,
+        width: CGFloat,
+        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+    ) {
+        defer {
+            gestureStart = nil
+            isSwipeSelecting = false
+            swipeSelectedIDs.removeAll()
+            lastSwipeIndex = nil
+        }
+
+        guard !isSwipeSelecting,
+              let card = card(at: value.location, width: width, metrics: metrics)
+        else { return }
+
+        onTap(card)
+    }
+
+    private func card(
+        at location: CGPoint,
+        width: CGFloat,
+        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+    ) -> Card? {
+        guard let index = cardIndex(at: location, width: width, metrics: metrics) else { return nil }
+        return cards[index]
+    }
+
+    private func cardIndex(
+        at location: CGPoint,
+        width: CGFloat,
+        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+    ) -> Int? {
+        guard !cards.isEmpty else { return nil }
+        let step = max(1, metrics.cardWidth + metrics.spacing)
+        let totalWidth = metrics.cardWidth + CGFloat(max(0, cards.count - 1)) * step
+        let leftInset = max(0, (width - totalWidth) / 2)
+        let localX = min(max(location.x - leftInset, 0), totalWidth)
+        return min(cards.count - 1, max(0, Int(localX / step)))
+    }
+
+    private func selectRange(endingAt index: Int) {
+        let start = lastSwipeIndex ?? index
+        let lower = min(start, index)
+        let upper = max(start, index)
+
+        for cardIndex in lower...upper {
+            let card = cards[cardIndex]
+            guard !swipeSelectedIDs.contains(card.id) else { continue }
+            swipeSelectedIDs.insert(card.id)
+            onSelect(card)
+        }
+
+        lastSwipeIndex = index
     }
 }
 
@@ -541,14 +766,23 @@ private struct PlayingCardView: View {
         }
         .padding(compact ? 5 : 6)
         .frame(width: cardWidth, height: cardHeight)
-        .background(.white)
+        .background(
+            LinearGradient(
+                colors: [
+                    .white,
+                    Color(red: 0.93, green: 0.94, blue: 0.91)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .foregroundStyle(card.isRed ? .red : .black)
         .clipShape(RoundedRectangle(cornerRadius: 7))
         .overlay(
             RoundedRectangle(cornerRadius: 7)
-                .stroke(selected ? .yellow : .black.opacity(0.15), lineWidth: selected ? 3 : 1)
+                .stroke(selected ? Color(red: 0.98, green: 0.77, blue: 0.18) : .black.opacity(0.15), lineWidth: selected ? 3 : 1)
         )
-        .shadow(color: .black.opacity(0.22), radius: selected ? 6 : 2, y: selected ? 4 : 1)
+        .shadow(color: .black.opacity(0.28), radius: selected ? 8 : 2, y: selected ? 5 : 1)
         .offset(y: selected ? -9 : 0)
         .animation(.snappy(duration: 0.16), value: selected)
     }
