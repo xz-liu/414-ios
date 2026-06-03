@@ -1,0 +1,20 @@
+414-online-master/
+
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.moved-aside
+
+# App archives and symbols
+*.xcarchive
+*.dSYM
