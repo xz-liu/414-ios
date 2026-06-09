@@ -40,7 +40,7 @@ struct RulesEngineTests {
             c(.seven, .hearts), c(.seven, .clubs)
         ]))
         #expect(pairRun.kind == .pairRun)
-        #expect(RulesEngine.canBeat(pairRun, singleRun))
+        #expect(!RulesEngine.canBeat(pairRun, singleRun))
 
         #expect(RulesEngine.classify([
             c(.queen, .hearts),
@@ -48,6 +48,83 @@ struct RulesEngineTests {
             c(.ace, .hearts),
             c(.two, .hearts)
         ]) == nil)
+    }
+
+    @Test("dragons only compare against the same dragon type and length")
+    func comparesDragonsByTypeAndLength() throws {
+        let singleRun345 = try #require(RulesEngine.classify([
+            c(.three, .hearts),
+            c(.four, .clubs),
+            c(.five, .spades)
+        ]))
+        let singleRun456 = try #require(RulesEngine.classify([
+            c(.four, .hearts),
+            c(.five, .clubs),
+            c(.six, .spades)
+        ]))
+        let singleRun4567 = try #require(RulesEngine.classify([
+            c(.four, .hearts),
+            c(.five, .clubs),
+            c(.six, .spades),
+            c(.seven, .diamonds)
+        ]))
+        let pairRun334455 = try #require(RulesEngine.classify([
+            c(.three, .hearts), c(.three, .clubs),
+            c(.four, .hearts), c(.four, .clubs),
+            c(.five, .hearts), c(.five, .clubs)
+        ]))
+        let pairRun445566 = try #require(RulesEngine.classify([
+            c(.four, .hearts), c(.four, .clubs),
+            c(.five, .hearts), c(.five, .clubs),
+            c(.six, .hearts), c(.six, .clubs)
+        ]))
+
+        #expect(RulesEngine.canBeat(singleRun456, singleRun345))
+        #expect(!RulesEngine.canBeat(singleRun4567, singleRun345))
+        #expect(!RulesEngine.canBeat(pairRun334455, singleRun345))
+        #expect(RulesEngine.canBeat(pairRun445566, pairRun334455))
+    }
+
+    @Test("three-card bombs beat single dragons but not pair dragons or triad attachments")
+    func comparesSmallAndLargeBombsAgainstOrdinaryCombinations() throws {
+        let singleRun345 = try #require(RulesEngine.classify([
+            c(.three, .diamonds),
+            c(.four, .diamonds),
+            c(.five, .diamonds)
+        ]))
+        let pairRun334455 = try #require(RulesEngine.classify([
+            c(.three, .hearts), c(.three, .clubs),
+            c(.four, .hearts), c(.four, .clubs),
+            c(.five, .hearts), c(.five, .clubs)
+        ]))
+        let triadWithSingle = try #require(RulesEngine.classify([
+            c(.six, .hearts),
+            c(.six, .clubs),
+            c(.six, .spades),
+            c(.nine, .hearts)
+        ]))
+        let threeThrees = try #require(RulesEngine.classify([
+            c(.three, .hearts),
+            c(.three, .clubs),
+            c(.three, .spades)
+        ]))
+        let fourSevens = try #require(RulesEngine.classify([
+            c(.seven, .hearts),
+            c(.seven, .clubs),
+            c(.seven, .spades),
+            c(.seven, .diamonds)
+        ]))
+        let pair = try #require(RulesEngine.classify([
+            c(.ace, .hearts),
+            c(.ace, .clubs)
+        ]))
+
+        #expect(RulesEngine.canBeat(threeThrees, pair))
+        #expect(RulesEngine.canBeat(threeThrees, singleRun345))
+        #expect(!RulesEngine.canBeat(threeThrees, pairRun334455))
+        #expect(!RulesEngine.canBeat(threeThrees, triadWithSingle))
+        #expect(RulesEngine.canBeat(fourSevens, pairRun334455))
+        #expect(RulesEngine.canBeat(fourSevens, triadWithSingle))
     }
 
     @Test("compares mechanical multi-deck bombs by count then rank")

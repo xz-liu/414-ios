@@ -389,7 +389,16 @@ struct GameEngineTests {
             deckCount: 1,
             players: Self.players,
             hands: [
-                [card(.eight), card(.nine), card(.ten)],
+                [
+                    card(.three, .clubs),
+                    card(.four, .clubs),
+                    card(.five, .clubs),
+                    card(.six, .clubs),
+                    card(.seven, .clubs),
+                    card(.eight),
+                    card(.nine),
+                    card(.ten)
+                ],
                 [
                     card(.two, .hearts),
                     card(.three, .hearts),
@@ -413,6 +422,47 @@ struct GameEngineTests {
 
         let action = AIPlayer().chooseAction(state: state, for: 1)
         #expect(action == .pass)
+    }
+
+    @Test("AI pressure rises before opponents are down to two cards")
+    func aiSpendsTwoWhenTablePressureIsHigh() {
+        let two = card(.two, .hearts)
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [
+                    card(.three, .clubs),
+                    card(.four, .clubs),
+                    card(.five, .clubs),
+                    card(.six, .clubs),
+                    card(.seven, .clubs),
+                    card(.bigJoker, nil)
+                ],
+                [
+                    two,
+                    card(.three, .hearts),
+                    card(.four, .hearts),
+                    card(.five, .hearts),
+                    card(.six, .hearts),
+                    card(.seven, .hearts)
+                ],
+                [],
+                []
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(kind: .single, cards: [card(.king, .clubs)], primaryRank: .king),
+                kind: .normal,
+                message: "Human出单张"
+            ),
+            cardsPlayedCount: [16, 12, 8, 6]
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        #expect(action == .play([two]))
     }
 
     @Test("AI spends a two to stop a player who is close to out")
@@ -446,6 +496,66 @@ struct GameEngineTests {
 
         let action = AIPlayer().chooseAction(state: state, for: 1)
         #expect(action == .play([two]))
+    }
+
+    @Test("AI leads a non-single shape when an opponent has one card")
+    func aiBlocksOneCardOpponentOnLead() {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.ace, .spades)],
+                [
+                    card(.bigJoker, nil),
+                    card(.six, .hearts),
+                    card(.six, .diamonds),
+                    card(.nine, .hearts),
+                    card(.jack, .hearts)
+                ],
+                [card(.three), card(.four), card(.five)],
+                [card(.seven), card(.eight), card(.ten)]
+            ],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 1)
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        let combination = RulesEngine.classify(action.cards)
+        #expect(combination?.kind == .pair)
+    }
+
+    @Test("AI uses a non-single bomb over a single two to block a one-card opponent")
+    func aiBlocksOneCardOpponentOnFollow() {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.four), card(.five), card(.six), card(.seven)],
+                [
+                    card(.two, .hearts),
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .clubs),
+                    card(.eight, .hearts),
+                    card(.nine, .hearts)
+                ],
+                [card(.bigJoker, nil)],
+                [card(.ten), card(.jack), card(.queen)]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(kind: .single, cards: [card(.king, .clubs)], primaryRank: .king),
+                kind: .normal,
+                message: "Human出单张"
+            ),
+            cardsPlayedCount: [13, 10, 12, 8]
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        let combination = RulesEngine.classify(action.cards)
+        #expect(combination?.kind == .sameRankBomb)
+        #expect(combination?.primaryRank == .three)
     }
 
     @Test("AI chooses legal actions promptly for multi deck opening hands")

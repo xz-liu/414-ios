@@ -133,9 +133,11 @@ public struct AIPlayer: Sendable {
         let remaining = hand.removing(action.cards)
         let handCount = state.hands[playerIndex].count
         let rank = combination.primaryRank?.rawValue ?? 0
+        let pressure = aiTablePressure(state: state, playerIndex: playerIndex)
         let targetIsClose = state.lastPlayableRecord.map {
             $0.playerIndex != playerIndex && state.hands[$0.playerIndex].count <= 2
         } ?? false
+        let singleCardThreat = hasSingleCardOpponent(state: state, playerIndex: playerIndex)
 
         var score = action.cards.count * 45 - rank * 10
         switch combination.kind {
@@ -164,25 +166,33 @@ public struct AIPlayer: Sendable {
         case .triadWithPair:
             score += handCount <= 8 ? 1_650 : 240
         case .sameRankBomb:
-            score += targetIsClose ? 1_200 : -1_600
+            score += targetIsClose ? 1_200 : -1_600 + pressure * 18
             score -= combination.sameRankCount * 110
         case .doubleJoker, .rocket414:
-            score += targetIsClose ? 1_600 : -2_200
+            score += targetIsClose ? 1_600 : -2_200 + pressure * 22
         case .cha, .gou:
             break
         }
 
         if state.prompt.kind == .follow {
-            score += 550
+            score += 550 + pressure * 8
             if combination.isBombLike, !targetIsClose {
-                score -= 1_700
+                score -= max(260, 1_700 - pressure * 18)
             }
         }
 
         if action.cards.contains(where: { $0.rank == .two || $0.rank == .smallJoker || $0.rank == .bigJoker }),
            !targetIsClose,
            handCount > 5 {
-            score -= 1_250
+            score -= max(0, 1_250 - pressure * 16)
+        }
+
+        if singleCardThreat && (state.prompt.kind == .lead || state.prompt.kind == .follow) {
+            if blocksSingleCardOut(combination) {
+                score += 1_450 + pressure * 10
+            } else if combination.kind == .single {
+                score -= 820 + pressure * 6
+            }
         }
 
         return score
@@ -251,6 +261,7 @@ private struct AIEvaluator {
         let after = planMetrics(for: remaining)
 
         return actionBenefit(action, combination: combination, before: before, after: after)
+            + singleCardOutDefenseScore(action, combination: combination)
             - resourceCost(action, combination: combination)
             - structureCost(action, combination: combination, before: before, after: after)
             - counterRisk(action, combination: combination)
@@ -262,7 +273,7 @@ private struct AIEvaluator {
     func passScore() -> Int {
         switch state.prompt.kind {
         case .follow:
-            return targetIsCloseToOut ? -900 : 0
+            return targetIsCloseToOut ? -900 : -tablePressure * 7
         case .cha, .gou:
             return 0
         case .lead, .gameOver:
@@ -307,13 +318,16 @@ private struct AIEvaluator {
         case .follow:
             benefit += 220
             if targetIsCloseToOut { benefit += 850 }
+            benefit += tablePressure * 9
             if hand.count <= 5 { benefit += 260 }
         case .cha:
             benefit += 360
             if targetIsCloseToOut { benefit += 720 }
+            benefit += tablePressure * 4
         case .gou:
             benefit += 920
             if targetIsCloseToOut { benefit += 520 }
+            benefit += tablePressure * 4
         case .gameOver:
             break
         }
@@ -328,6 +342,15 @@ private struct AIEvaluator {
                 benefit += hand.count <= 7 ? 240 : 0
             default:
                 break
+            }
+
+            if state.prompt.kind == .follow {
+                if combination.isBombLike {
+                    benefit += tablePressure * 7
+                }
+                if action.cards.contains(where: isControlCard) {
+                    benefit += tablePressure * 5
+                }
             }
         }
 
@@ -472,9 +495,9 @@ private struct AIEvaluator {
 
         switch combination.kind {
         case .single where state.prompt.kind == .lead || state.prompt.kind == .follow:
-            return singleChaRisk(rank: combination.primaryRank)
+            return pressureDiscounted(singleChaRisk(rank: combination.primaryRank), maxDiscount: 72)
         case .cha:
-            return gouRisk(rank: combination.primaryRank)
+            return pressureDiscounted(gouRisk(rank: combination.primaryRank), maxDiscount: 72)
         case .sameRankBomb, .doubleJoker, .rocket414:
             return bombCounterRisk(combination)
         default:
@@ -518,7 +541,10 @@ private struct AIEvaluator {
                     rank != .bigJoker &&
                     opponentRankPotential(rank) > combination.sameRankCount
             }
-            return largerSameCountRanks * 120 + (largerCountRisk ? 260 : 0)
+            return pressureDiscounted(
+                largerSameCountRanks * 120 + (largerCountRisk ? 260 : 0),
+                maxDiscount: 70
+            )
         default:
             return 0
         }
@@ -553,7 +579,7 @@ private struct AIEvaluator {
             }
         }
 
-        return penalty
+        return pressureDiscounted(penalty, maxDiscount: 86)
     }
 
     func greedyRunPenalty(
@@ -582,7 +608,44 @@ private struct AIEvaluator {
         if targetIsCloseToOut && !action.cards.isEmpty {
             bonus += 160
         }
+        if state.prompt.kind == .follow && !action.cards.isEmpty {
+            bonus += tablePressure * 2
+        }
         return bonus
+    }
+
+    func singleCardOutDefenseScore(_ action: PlayerAction, combination: Combination?) -> Int {
+        guard hasSingleCardOpponent(state: state, playerIndex: playerIndex) else { return 0 }
+        guard state.prompt.kind == .lead || state.prompt.kind == .follow else { return 0 }
+        guard action.cards.count < hand.count, let combination else { return 0 }
+
+        if blocksSingleCardOut(combination) {
+            var bonus = 1_650 + tablePressure * 9
+            if state.prompt.kind == .follow {
+                bonus += 420
+            }
+            switch combination.kind {
+            case .sameRankBomb:
+                bonus -= 260
+            case .doubleJoker:
+                bonus -= 520
+            case .rocket414:
+                bonus -= 760
+            default:
+                break
+            }
+            return max(420, bonus)
+        }
+
+        if combination.kind == .single {
+            var penalty = 920 + tablePressure * 6
+            if combination.primaryRank == .bigJoker && state.deckCount == 1 {
+                penalty /= 2
+            }
+            return -penalty
+        }
+
+        return 0
     }
 
     func isControlCard(_ card: Card) -> Bool {
@@ -593,6 +656,16 @@ private struct AIEvaluator {
         state.lastPlayableRecord.map {
             $0.playerIndex != playerIndex && state.hands[$0.playerIndex].count <= 2
         } ?? false
+    }
+
+    var tablePressure: Int {
+        aiTablePressure(state: state, playerIndex: playerIndex)
+    }
+
+    func pressureDiscounted(_ value: Int, maxDiscount: Int) -> Int {
+        guard value > 0 else { return 0 }
+        let discount = min(maxDiscount, tablePressure)
+        return value * max(0, 100 - discount) / 100
     }
 
     func rankValue(_ rank: Rank?) -> Int {
@@ -939,6 +1012,54 @@ private struct AIEvaluator {
 
     func duplicateRanksUsed(by cards: [Card]) -> Int {
         Set(cards.map(\.rank)).filter { hand.count(of: $0) > 1 }.count
+    }
+}
+
+private func aiTablePressure(state: GameState, playerIndex: Int) -> Int {
+    let totalCards = max(1, state.deckCount * 54)
+    let playedCards = min(totalCards, max(0, state.cardsPlayedCount.reduce(0, +)))
+    let progressPressure = Int((Double(playedCards) / Double(totalCards)) * 42.0)
+
+    let opponentCounts = state.hands.indices
+        .filter { $0 != playerIndex }
+        .map { state.hands[$0].count }
+        .filter { $0 > 0 }
+    let minOpponentCards = opponentCounts.min() ?? 99
+    let remainingPressure = max(0, 72 - minOpponentCards * 8)
+
+    var lastActorPressure = 0
+    if let lastRecord = state.lastPlayableRecord,
+       lastRecord.playerIndex != playerIndex,
+       state.hands.indices.contains(lastRecord.playerIndex) {
+        let remaining = state.hands[lastRecord.playerIndex].count
+        if remaining > 0 {
+            lastActorPressure = max(0, 42 - remaining * 6)
+        }
+    }
+
+    let passPressure = state.prompt.kind == .follow ? state.passCount * 5 : 0
+    return min(100, progressPressure + remainingPressure + lastActorPressure + passPressure)
+}
+
+private func hasSingleCardOpponent(state: GameState, playerIndex: Int) -> Bool {
+    state.hands.indices.contains {
+        $0 != playerIndex && state.hands[$0].count == 1
+    }
+}
+
+private func blocksSingleCardOut(_ combination: Combination) -> Bool {
+    switch combination.kind {
+    case .pair,
+         .sameRankBomb,
+         .triadWithSingle,
+         .triadWithPair,
+         .singleRun,
+         .pairRun,
+         .doubleJoker,
+         .rocket414:
+        return true
+    case .single, .cha, .gou:
+        return false
     }
 }
 

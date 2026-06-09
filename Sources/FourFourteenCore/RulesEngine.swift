@@ -48,15 +48,14 @@ public enum RulesEngine {
             return rankValue(challenger.primaryRank) > rankValue(previous.primaryRank)
         }
 
+        if challenger.kind == .sameRankBomb && !previous.isBombLike {
+            return canSameRankBombBeatOrdinary(challenger, previous)
+        }
         if challenger.isBombLike && !previous.isBombLike {
             return true
         }
         if previous.isBombLike && !challenger.isBombLike {
             return false
-        }
-
-        if challenger.kind == .pairRun && previous.kind == .singleRun {
-            return true
         }
 
         guard challenger.kind == previous.kind else { return false }
@@ -122,6 +121,20 @@ private extension RulesEngine {
         guard cards.count == 3 else { return nil }
         guard cards.count(of: .four) == 2 && cards.count(of: .ace) == 1 else { return nil }
         return Combination(kind: .rocket414, cards: cards, primaryRank: .ace)
+    }
+
+    static func canSameRankBombBeatOrdinary(_ bomb: Combination, _ previous: Combination) -> Bool {
+        guard bomb.kind == .sameRankBomb else { return false }
+        switch previous.kind {
+        case .single, .pair:
+            return true
+        case .singleRun:
+            return true
+        case .triadWithSingle, .triadWithPair, .pairRun:
+            return bomb.sameRankCount >= 4
+        case .sameRankBomb, .doubleJoker, .rocket414, .cha, .gou:
+            return false
+        }
     }
 
     static func classifyDoubleJoker(_ cards: [Card]) -> Combination? {

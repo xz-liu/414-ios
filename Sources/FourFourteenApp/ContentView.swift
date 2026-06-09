@@ -291,33 +291,16 @@ struct ContentView: View {
     }
 
     private var bottomRow: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             controls
                 .frame(maxWidth: 560)
             handArea
         }
-        .frame(height: 164)
+        .frame(height: 138)
     }
 
     private var handArea: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Text("你的手牌 \(model.visibleCardCount(for: 0))张")
-                    .font(.caption.weight(.bold))
-                Text(model.statusText(for: 0))
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(model.isHumanTurn ? .yellow : .white.opacity(0.14))
-                    .foregroundStyle(model.isHumanTurn ? .black : .white)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                if model.humanRocket414Count > 0 {
-                    rocket414Badge
-                }
-                Spacer()
-            }
-            .foregroundStyle(.white)
-
+        VStack(alignment: .leading, spacing: 2) {
             HandSpreadView(
                 cards: model.humanHand,
                 selectedCards: model.selectedCards,
@@ -327,17 +310,27 @@ struct ContentView: View {
             } onSelectCards: { cards in
                 model.select(cards)
             }
+            .frame(height: 82)
+
+            HStack(spacing: 7) {
+                Text("\(model.visibleCardCount(for: 0))张")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.78))
+                Text(model.statusText(for: 0))
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(model.isHumanTurn ? .yellow : .white.opacity(0.12))
+                    .foregroundStyle(model.isHumanTurn ? .black : .white.opacity(0.86))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                if model.humanRocket414Count > 0 {
+                    rocket414Badge
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(height: 18)
+            .padding(.horizontal, 8)
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(.black.opacity(0.20))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.white.opacity(0.10), lineWidth: 1)
-        )
     }
 
     private var rocket414Badge: some View {
@@ -350,15 +343,11 @@ struct ContentView: View {
                 Text(model.humanRocket414Count > 1 ? "4A4x\(model.humanRocket414Count)" : "4A4")
                     .font(.caption2.weight(.black))
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(Color(red: 0.96, green: 0.62, blue: 0.08))
             .foregroundStyle(.black)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(.white.opacity(0.26), lineWidth: 1)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 5))
             .opacity(model.canSelectRocket414 ? 1 : 0.58)
         }
         .buttonStyle(.plain)
@@ -447,10 +436,6 @@ struct ContentView: View {
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(enabled ? tint : Color.white.opacity(0.12))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.white.opacity(enabled ? 0.24 : 0.08), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
