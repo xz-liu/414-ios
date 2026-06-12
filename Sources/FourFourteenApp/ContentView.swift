@@ -127,28 +127,67 @@ struct ContentView: View {
             return AnyView(preGamePanel)
         }
 
-        return AnyView(
-        HStack(spacing: 10) {
-            lastPlayView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        return AnyView(tablePlayGrid)
+    }
 
-            if model.state.isGameOver {
-                scoreView
-                    .frame(width: 220)
-            } else {
-                eventLogView
-                    .frame(width: 220)
+    private var tablePlayGrid: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(tableSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(.white.opacity(0.12), lineWidth: 1)
+                    )
+
+                if model.state.isGameOver {
+                    scoreView
+                        .frame(width: min(300, width * 0.48), height: min(132, height * 0.72))
+                        .zIndex(3)
+                } else {
+                    tableCenterHint
+                        .frame(width: min(260, width * 0.42))
+                        .position(x: width * 0.50, y: height * 0.52)
+                }
+
+                tablePlaySlot(index: 2, width: min(260, width * 0.42))
+                    .position(x: width * 0.50, y: min(58, height * 0.24))
+
+                tablePlaySlot(index: 1, width: min(238, width * 0.34))
+                    .position(x: width * 0.27, y: height * 0.50)
+
+                tablePlaySlot(index: 3, width: min(238, width * 0.34))
+                    .position(x: width * 0.73, y: height * 0.50)
+
+                tablePlaySlot(index: 0, width: min(300, width * 0.48))
+                    .position(x: width * 0.50, y: max(height - 48, height * 0.74))
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(tableSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(.white.opacity(0.16), lineWidth: 1)
+    }
+
+    private var tableCenterHint: some View {
+        VStack(spacing: 5) {
+            Text(model.notice.isEmpty ? promptText : model.notice)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(model.notice.isEmpty ? .white.opacity(0.56) : .yellow)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.black.opacity(model.notice.isEmpty ? 0.08 : 0.20))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func tablePlaySlot(index: Int, width: CGFloat) -> some View {
+        TablePlaySlotView(
+            playerName: model.state.players[index].name,
+            record: model.tableRecord(for: index)
         )
-        )
+        .frame(width: width, height: 76)
     }
 
     private var preGamePanel: some View {
@@ -204,58 +243,6 @@ struct ContentView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(.white.opacity(0.16), lineWidth: 1)
-        )
-    }
-
-    private var lastPlayView: some View {
-        VStack(spacing: 8) {
-            Text(model.state.visibleRecord?.message ?? "等待出牌")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.78)
-                .multilineTextAlignment(.center)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: -8) {
-                    ForEach(model.state.visibleRecord?.combination?.cards ?? []) { card in
-                        PlayingCardView(card: card, selected: false, compact: true)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .frame(minWidth: 120)
-            }
-            .frame(height: 54)
-
-            if !model.notice.isEmpty {
-                Text(model.notice)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.yellow)
-                    .lineLimit(1)
-            }
-        }
-    }
-
-    private var eventLogView: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("牌局")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.92))
-            ForEach(Array(model.state.eventLog.suffix(5).enumerated()), id: \.offset) { _, record in
-                Text(record.message)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.74))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(8)
-        .frame(maxHeight: .infinity)
-        .background(.black.opacity(0.20))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(0.10), lineWidth: 1)
         )
     }
 
@@ -545,6 +532,108 @@ private struct TableClothPattern: Shape {
         }
 
         return path
+    }
+}
+
+private struct TablePlaySlotView: View {
+    let playerName: String
+    let record: PlayRecord?
+
+    var body: some View {
+        Group {
+            if let record {
+                VStack(spacing: 4) {
+                    Text(title(for: record))
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(titleColor(for: record))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+
+                    if let cards = record.combination?.cards, !cards.isEmpty {
+                        PlayedCardsFan(cards: cards)
+                            .frame(height: 52)
+                    } else {
+                        Text("过")
+                            .font(.title3.weight(.black))
+                            .foregroundStyle(.white.opacity(0.70))
+                            .frame(height: 52)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(.black.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
+            } else {
+                Color.clear
+            }
+        }
+    }
+
+    private func title(for record: PlayRecord) -> String {
+        switch record.kind {
+        case .normal:
+            return "\(playerName) · \(record.combination?.displayName ?? "出牌")"
+        case .pass:
+            return "\(playerName) · 过"
+        case .cha:
+            return "\(playerName) · 叉"
+        case .gou:
+            return "\(playerName) · 勾"
+        case .system:
+            return record.message
+        }
+    }
+
+    private func titleColor(for record: PlayRecord) -> Color {
+        switch record.kind {
+        case .cha:
+            return Color(red: 1.00, green: 0.35, blue: 0.28)
+        case .gou:
+            return Color(red: 1.00, green: 0.64, blue: 0.16)
+        case .pass:
+            return .white.opacity(0.62)
+        case .normal, .system:
+            return .white.opacity(0.88)
+        }
+    }
+}
+
+private struct PlayedCardsFan: View {
+    let cards: [Card]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let metrics = cardMetrics(width: proxy.size.width, count: cards.count)
+            HStack(spacing: metrics.spacing) {
+                ForEach(cards) { card in
+                    PlayingCardView(
+                        card: card,
+                        selected: false,
+                        compact: true,
+                        width: metrics.cardWidth,
+                        height: metrics.cardHeight
+                    )
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
+        }
+    }
+
+    private func cardMetrics(width: CGFloat, count: Int) -> (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat) {
+        guard count > 0 else {
+            return (34, 48, 0)
+        }
+
+        let cardWidth = min(36, max(22, width / CGFloat(count) * 1.75))
+        let cardHeight = cardWidth * 1.38
+        guard count > 1 else {
+            return (cardWidth, cardHeight, 0)
+        }
+
+        let visibleStep = (width - cardWidth) / CGFloat(count - 1)
+        let spacing = min(2, max(-18, visibleStep - cardWidth))
+        return (cardWidth, cardHeight, spacing)
     }
 }
 

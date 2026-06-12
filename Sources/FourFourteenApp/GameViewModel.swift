@@ -30,6 +30,7 @@ final class GameViewModel: ObservableObject {
     @Published var actionBanner: ActionBanner?
     @Published var phase: GamePhase = .waiting
     @Published var visibleHandCounts: [Int] = [0, 0, 0, 0]
+    @Published var tableRecords: [PlayRecord?] = Array(repeating: nil, count: 4)
     @Published var soundEnabled = true {
         didSet {
             audio.effectsEnabled = soundEnabled
@@ -119,6 +120,7 @@ final class GameViewModel: ObservableObject {
         actionBanner = nil
         audio.play(.shuffle)
         engine = GameEngine(deckCount: deckCount)
+        tableRecords = Array(repeating: nil, count: engine.state.players.count)
         visibleHandCounts = [0, 0, 0, 0]
         phase = .dealing
         objectWillChange.send()
@@ -248,6 +250,10 @@ final class GameViewModel: ObservableObject {
             return state.hands[playerIndex].count
         }
     }
+
+    func tableRecord(for playerIndex: Int) -> PlayRecord? {
+        tableRecords.indices.contains(playerIndex) ? tableRecords[playerIndex] : nil
+    }
 }
 
 private extension GameViewModel {
@@ -285,10 +291,15 @@ private extension GameViewModel {
         guard phase == .playing else { return }
         do {
             let eventCountBefore = engine.state.eventLog.count
+            let startsFreshLead = action.startsFreshLead(from: engine.state.prompt)
             try engine.apply(action)
+            if startsFreshLead {
+                clearTableRecords()
+            }
             selectedCards.removeAll()
             notice = ""
             if engine.state.eventLog.count > eventCountBefore {
+                updateTableRecords(fromEventIndex: eventCountBefore)
                 showBannerFromLatestEvent()
                 playSoundForLatestEvent()
             }
@@ -320,9 +331,14 @@ private extension GameViewModel {
                 }
                 do {
                     let eventCountBefore = engine.state.eventLog.count
+                    let startsFreshLead = action.startsFreshLead(from: engine.state.prompt)
                     try engine.apply(action)
+                    if startsFreshLead {
+                        clearTableRecords()
+                    }
                     notice = ""
                     if engine.state.eventLog.count > eventCountBefore {
+                        updateTableRecords(fromEventIndex: eventCountBefore)
                         showBannerFromLatestEvent(autoClear: false)
                         playSoundForLatestEvent()
                     }
@@ -357,6 +373,35 @@ private extension GameViewModel {
 
     func clearBanner() {
         actionBanner = nil
+    }
+
+    func updateTableRecords(fromEventIndex startIndex: Int) {
+        guard startIndex < engine.state.eventLog.count else { return }
+        for record in engine.state.eventLog.dropFirst(startIndex) {
+            updateTableRecord(for: record)
+        }
+    }
+
+    func updateTableRecord(for record: PlayRecord) {
+        switch record.kind {
+        case .normal, .pass, .cha, .gou:
+            guard tableRecords.indices.contains(record.playerIndex) else { return }
+            tableRecords[record.playerIndex] = record
+        case .system:
+            if record.message.contains("重新起手") || record.message.contains("死叉后起手") {
+                clearTableRecords(keeping: engine.state.prompt.playerIndex)
+            }
+        }
+    }
+
+    func clearTableRecords(keeping playerIndex: Int? = nil) {
+        let keptRecord = playerIndex.flatMap { index in
+            tableRecords.indices.contains(index) ? tableRecords[index] : nil
+        }
+        tableRecords = Array(repeating: nil, count: engine.state.players.count)
+        if let playerIndex, tableRecords.indices.contains(playerIndex) {
+            tableRecords[playerIndex] = keptRecord
+        }
     }
 
     func banner(for record: PlayRecord) -> ActionBanner? {
@@ -434,6 +479,18 @@ private extension GameViewModel {
             return "压不住上一手"
         case .cannotPassOnLead:
             return "起手必须出牌"
+        }
+    }
+}
+
+private extension PlayerAction {
+    func startsFreshLead(from prompt: TurnPrompt) -> Bool {
+        guard prompt.kind == .lead else { return false }
+        switch self {
+        case .play(let cards):
+            return !cards.isEmpty
+        case .pass, .cha, .gou:
+            return false
         }
     }
 }
