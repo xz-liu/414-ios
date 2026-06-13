@@ -66,24 +66,9 @@ struct ContentView: View {
                 .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Stepper(value: $model.deckCount, in: 1...4) {
-                Text("\(model.deckCount)副")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 108)
-            .disabled(model.isDealing)
+            deckStepper
 
-            Button {
-                model.dealNewGame()
-            } label: {
-                Label(dealButtonTitle, systemImage: model.isWaiting ? "play.fill" : "arrow.clockwise")
-                    .labelStyle(.titleAndIcon)
-                    .font(.subheadline.weight(.bold))
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.orange)
-            .disabled(model.isDealing)
+            topDealButton
 
             topIconButton(
                 icon: model.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
@@ -135,12 +120,7 @@ struct ContentView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(tableSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(.white.opacity(0.12), lineWidth: 1)
-                    )
+                tableCenterGlow(width: width, height: height)
 
                 if model.state.isGameOver {
                     scoreView
@@ -178,8 +158,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(.black.opacity(model.notice.isEmpty ? 0.08 : 0.20))
-        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .shadow(color: .black.opacity(0.52), radius: 5, y: 2)
     }
 
     private func tablePlaySlot(index: Int, width: CGFloat) -> some View {
@@ -191,59 +170,59 @@ struct ContentView: View {
     }
 
     private var preGamePanel: some View {
-        VStack(spacing: 10) {
-            Text(model.isDealing ? "正在发牌" : "准备开始")
-                .font(.title2.weight(.black))
-                .foregroundStyle(.white)
-                .lineLimit(1)
+        GeometryReader { proxy in
+            ZStack {
+                tableCenterGlow(width: proxy.size.width, height: proxy.size.height)
 
-            HStack(spacing: 14) {
-                ForEach(0..<4, id: \.self) { index in
-                    VStack(spacing: 4) {
-                        Text(model.state.players[index].name)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        Text("\(model.visibleCardCount(for: index))")
-                            .font(.title.weight(.black))
-                            .foregroundStyle(.yellow)
+                VStack(spacing: 12) {
+                    Text(model.isDealing ? "正在发牌" : "准备开始")
+                        .font(.title2.weight(.black))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .shadow(color: .black.opacity(0.55), radius: 8, y: 3)
+
+                    HStack(spacing: 18) {
+                        ForEach(0..<4, id: \.self) { index in
+                            VStack(spacing: 2) {
+                                Text(model.state.players[index].name)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white.opacity(0.78))
+                                Text("\(model.visibleCardCount(for: index))")
+                                    .font(.title.weight(.black))
+                                    .foregroundStyle(.yellow)
+                                    .shadow(color: .yellow.opacity(0.36), radius: 8)
+                            }
+                            .frame(width: 62, height: 56)
+                        }
                     }
-                    .frame(width: 62, height: 58)
-                    .background(.black.opacity(0.22))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(.white.opacity(0.12), lineWidth: 1)
-                    )
-                }
-            }
 
-            if model.isWaiting {
-                Button {
-                    model.dealNewGame()
-                } label: {
-                    Label("发牌", systemImage: "play.fill")
-                        .font(.headline.weight(.bold))
-                        .frame(width: 150, height: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
-            } else {
-                ProgressView()
-                    .tint(.white)
-            }
+                    if model.isWaiting {
+                        Button {
+                            model.dealNewGame()
+                        } label: {
+                            Label("发牌", systemImage: "play.fill")
+                                .font(.headline.weight(.black))
+                                .frame(width: 150, height: 44)
+                                .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .shadow(color: Color.orange.opacity(0.82), radius: 8)
+                        .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
+                    } else {
+                        ProgressView()
+                            .tint(.white)
+                    }
 
-            Text(model.notice.isEmpty ? "选择副牌数后发牌" : model.notice)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.76))
+                    Text(model.notice.isEmpty ? "选择副牌数后发牌" : model.notice)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.76))
+                        .shadow(color: .black.opacity(0.45), radius: 5, y: 2)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(tableSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(.white.opacity(0.16), lineWidth: 1)
-        )
     }
 
     private var scoreView: some View {
@@ -269,12 +248,7 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .background(.black.opacity(0.20))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(0.10), lineWidth: 1)
-        )
+        .shadow(color: .black.opacity(0.60), radius: 6, y: 3)
     }
 
     private var bottomRow: some View {
@@ -305,11 +279,8 @@ struct ContentView: View {
                     .foregroundStyle(.white.opacity(0.78))
                 Text(model.statusText(for: 0))
                     .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(model.isHumanTurn ? .yellow : .white.opacity(0.12))
-                    .foregroundStyle(model.isHumanTurn ? .black : .white.opacity(0.86))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .foregroundStyle(model.isHumanTurn ? .yellow : .white.opacity(0.86))
+                    .shadow(color: model.isHumanTurn ? .yellow.opacity(0.55) : .clear, radius: 8)
                 if model.humanRocket414Count > 0 {
                     rocket414Badge
                 }
@@ -332,10 +303,10 @@ struct ContentView: View {
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color(red: 0.96, green: 0.62, blue: 0.08))
-            .foregroundStyle(.black)
-            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .foregroundStyle(Color(red: 1.00, green: 0.68, blue: 0.08))
             .opacity(model.canSelectRocket414 ? 1 : 0.58)
+            .shadow(color: Color.orange.opacity(model.canSelectRocket414 ? 0.74 : 0.20), radius: 6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!model.canSelectRocket414)
@@ -343,7 +314,7 @@ struct ContentView: View {
 
     private var controls: some View {
         HStack(spacing: 7) {
-            actionButton("提示", icon: "lightbulb.fill", enabled: model.canHint, tint: Color(red: 0.20, green: 0.48, blue: 0.95)) {
+            actionButton(model.isHinting ? "提示中" : "提示", icon: "lightbulb.fill", enabled: model.canHint, tint: Color(red: 0.20, green: 0.48, blue: 0.95)) {
                 model.hint()
             }
             actionButton("过", icon: "arrowshape.turn.up.forward.fill", enabled: model.canPass, tint: Color(red: 0.34, green: 0.38, blue: 0.45)) {
@@ -386,23 +357,14 @@ struct ContentView: View {
                     .font(.system(size: 10, weight: .bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                    .foregroundStyle(highlighted ? .black : .white.opacity(0.75))
+                    .foregroundStyle(highlighted ? .yellow : .white.opacity(0.75))
             }
         }
-        .foregroundStyle(highlighted ? .black : .white)
+        .foregroundStyle(highlighted ? .yellow : .white)
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(highlighted ? Color(red: 0.97, green: 0.77, blue: 0.22) : Color.black.opacity(0.25))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(highlighted ? .white.opacity(0.40) : .white.opacity(0.15), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(highlighted ? 0.32 : 0.16), radius: highlighted ? 8 : 3, y: 2)
+        .shadow(color: highlighted ? .yellow.opacity(0.62) : .black.opacity(0.55), radius: highlighted ? 7 : 4, y: 2)
     }
 
     private func actionButton(
@@ -418,12 +380,23 @@ struct ContentView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity)
-                .frame(height: 34)
-                .foregroundStyle(enabled ? .white : .white.opacity(0.55))
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(enabled ? tint : Color.white.opacity(0.12))
-                )
+                .frame(height: 38)
+                .foregroundStyle(enabled ? .white : .white.opacity(0.34))
+                .shadow(color: enabled ? tint.opacity(0.82) : .clear, radius: 6)
+                .shadow(color: .black.opacity(enabled ? 0.36 : 0.16), radius: 2, y: 1)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(enabled ? tint.opacity(0.95) : Color.white.opacity(0.12))
+                        .frame(height: enabled ? 3 : 1)
+                }
+                .overlay(alignment: .top) {
+                    if enabled {
+                        Rectangle()
+                            .fill(tint.opacity(0.70))
+                            .frame(height: 1)
+                    }
+                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -433,30 +406,99 @@ struct ContentView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(active ? .black : .white.opacity(0.82))
+                .foregroundStyle(active ? Color(red: 1.00, green: 0.72, blue: 0.16) : .white.opacity(0.82))
                 .frame(width: 34, height: 32)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(active ? Color(red: 0.96, green: 0.74, blue: 0.22) : Color.white.opacity(0.12))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.white.opacity(0.18), lineWidth: 1)
-                )
+                .shadow(color: active ? Color.orange.opacity(0.72) : .black.opacity(0.32), radius: active ? 6 : 3)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    private var tableSurface: some ShapeStyle {
-        LinearGradient(
-            colors: [
-                Color(red: 0.02, green: 0.36, blue: 0.23).opacity(0.88),
-                Color(red: 0.01, green: 0.20, blue: 0.17).opacity(0.92),
-                Color(red: 0.10, green: 0.13, blue: 0.20).opacity(0.88)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var deckStepper: some View {
+        HStack(spacing: 2) {
+            deckAdjustButton(icon: "minus", enabled: !model.isDealing && model.deckCount > 1) {
+                model.deckCount = max(1, model.deckCount - 1)
+            }
+            Text("\(model.deckCount)副")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 42)
+                .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
+            deckAdjustButton(icon: "plus", enabled: !model.isDealing && model.deckCount < 4) {
+                model.deckCount = min(4, model.deckCount + 1)
+            }
+        }
+        .frame(width: 108, height: 34)
+    }
+
+    private func deckAdjustButton(icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(enabled ? Color(red: 1.00, green: 0.82, blue: 0.32) : .white.opacity(0.28))
+                .frame(width: 28, height: 32)
+                .shadow(color: enabled ? Color.yellow.opacity(0.62) : .clear, radius: 5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private var topDealButton: some View {
+        Button {
+            model.dealNewGame()
+        } label: {
+            Label(dealButtonTitle, systemImage: model.isWaiting ? "play.fill" : "arrow.clockwise")
+                .labelStyle(.titleAndIcon)
+                .font(.subheadline.weight(.black))
+                .lineLimit(1)
+                .minimumScaleFactor(0.80)
+                .frame(width: 78, height: 34)
+                .foregroundStyle(model.isDealing ? .white.opacity(0.40) : Color(red: 1.00, green: 0.56, blue: 0.12))
+                .shadow(color: model.isDealing ? .clear : Color.orange.opacity(0.82), radius: 7)
+                .shadow(color: .black.opacity(model.isDealing ? 0.15 : 0.34), radius: 2, y: 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isDealing)
+    }
+
+    private func tableCenterGlow(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            Ellipse()
+                .fill(Color.black.opacity(0.12))
+                .frame(width: width * 0.98, height: height * 0.82)
+                .offset(y: 10)
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.02, green: 0.36, blue: 0.23).opacity(0.58),
+                            Color(red: 0.02, green: 0.20, blue: 0.19).opacity(0.36),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: max(width, height) * 0.55
+                    )
+                )
+                .frame(width: width * 0.94, height: height * 0.76)
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.08),
+                    .clear,
+                    Color(red: 0.90, green: 0.08, blue: 0.08).opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .mask {
+                Ellipse()
+                    .frame(width: width * 0.90, height: height * 0.70)
+            }
+        }
+        .frame(width: width, height: height)
+        .allowsHitTesting(false)
     }
 
     private func horizontalPadding(for size: CGSize) -> CGFloat {
@@ -561,8 +603,8 @@ private struct TablePlaySlotView: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .background(.black.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .shadow(color: slotGlowColor(for: record).opacity(record.kind == .pass ? 0.26 : 0.52), radius: 5)
+                .shadow(color: .black.opacity(0.46), radius: 3, y: 2)
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
             } else {
                 Color.clear
@@ -595,6 +637,19 @@ private struct TablePlaySlotView: View {
             return .white.opacity(0.62)
         case .normal, .system:
             return .white.opacity(0.88)
+        }
+    }
+
+    private func slotGlowColor(for record: PlayRecord) -> Color {
+        switch record.kind {
+        case .cha:
+            return Color(red: 1.00, green: 0.18, blue: 0.10)
+        case .gou:
+            return Color(red: 1.00, green: 0.58, blue: 0.12)
+        case .normal, .system:
+            return Color.black
+        case .pass:
+            return .white
         }
     }
 }
@@ -652,16 +707,19 @@ private struct HandSpreadView: View {
     var body: some View {
         GeometryReader { proxy in
             let metrics = handMetrics(width: proxy.size.width, count: cards.count)
+            let selectedIDs = Set(selectedCards.map(\.id))
+            let markedIDs = Set(markedCards.map(\.id))
             HStack(spacing: metrics.spacing) {
                 ForEach(cards) { card in
                     PlayingCardView(
                         card: card,
-                        selected: selectedCards.contains(card),
-                        marked: markedCards.contains(card),
+                        selected: selectedIDs.contains(card.id),
+                        marked: markedIDs.contains(card.id),
                         compact: false,
                         width: metrics.cardWidth,
                         height: metrics.cardHeight
                     )
+                    .equatable()
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
@@ -724,6 +782,7 @@ private struct HandSpreadView: View {
         guard isSwipeSelecting,
               let index = cardIndex(at: value.location, width: width, metrics: metrics)
         else { return }
+        guard lastSwipeIndex != index || swipeSelectedIDs.isEmpty else { return }
 
         selectRange(endingAt: index)
     }
@@ -806,15 +865,8 @@ private struct ActionBannerView: View {
         .padding(.horizontal, 30)
         .padding(.vertical, 18)
         .frame(minWidth: 150)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(backgroundColor.opacity(0.92))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.white.opacity(0.34), lineWidth: 2)
-        )
-        .shadow(color: .black.opacity(0.34), radius: 16, y: 8)
+        .shadow(color: backgroundColor.opacity(0.90), radius: 8)
+        .shadow(color: .black.opacity(0.62), radius: 8, y: 5)
     }
 
     private var fontSize: CGFloat {
@@ -846,7 +898,7 @@ private struct ActionBannerView: View {
     }
 }
 
-private struct PlayingCardView: View {
+private struct PlayingCardView: View, Equatable {
     let card: Card
     let selected: Bool
     var marked: Bool = false
@@ -908,5 +960,14 @@ private struct PlayingCardView: View {
             return Color(red: 0.96, green: 0.54, blue: 0.08)
         }
         return .black.opacity(0.15)
+    }
+
+    static func == (lhs: PlayingCardView, rhs: PlayingCardView) -> Bool {
+        lhs.card.id == rhs.card.id &&
+            lhs.selected == rhs.selected &&
+            lhs.marked == rhs.marked &&
+            lhs.compact == rhs.compact &&
+            lhs.width == rhs.width &&
+            lhs.height == rhs.height
     }
 }

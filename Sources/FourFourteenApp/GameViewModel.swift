@@ -31,6 +31,7 @@ final class GameViewModel: ObservableObject {
     @Published var phase: GamePhase = .waiting
     @Published var visibleHandCounts: [Int] = [0, 0, 0, 0]
     @Published var tableRecords: [PlayRecord?] = Array(repeating: nil, count: 4)
+    @Published private(set) var isHinting = false
     @Published var soundEnabled = true {
         didSet {
             audio.effectsEnabled = soundEnabled
@@ -44,6 +45,8 @@ final class GameViewModel: ObservableObject {
 
     private(set) var engine: GameEngine
     private var isAdvancingAI = false
+    private var hintTask: Task<Void, Never>?
+    private var hintGeneration = 0
     private let audio = AudioController()
 
     init() {
@@ -88,7 +91,7 @@ final class GameViewModel: ObservableObject {
     }
 
     var canHint: Bool {
-        isHumanTurn
+        isHumanTurn && !isHinting
     }
 
     var canCha: Bool {
@@ -115,6 +118,7 @@ final class GameViewModel: ObservableObject {
 
     func dealNewGame() {
         guard phase != .dealing else { return }
+        cancelHint()
         selectedCards.removeAll()
         notice = ""
         actionBanner = nil
@@ -129,6 +133,7 @@ final class GameViewModel: ObservableObject {
 
     func toggle(_ card: Card) {
         guard isHumanTurn else { return }
+        cancelHint()
         audio.play(.tap)
         if selectedCards.contains(card) {
             selectedCards.remove(card)
@@ -140,6 +145,7 @@ final class GameViewModel: ObservableObject {
     func select(_ card: Card) {
         guard isHumanTurn else { return }
         guard !selectedCards.contains(card) else { return }
+        cancelHint()
         selectedCards.insert(card)
     }
 
@@ -147,11 +153,13 @@ final class GameViewModel: ObservableObject {
         guard isHumanTurn else { return }
         let newCards = cards.filter { !selectedCards.contains($0) }
         guard !newCards.isEmpty else { return }
+        cancelHint()
         selectedCards.formUnion(newCards)
     }
 
     func selectRocket414() {
         guard let cards = humanRocket414Cards else { return }
+        cancelHint()
         selectedCards = Set(cards)
         notice = "已选中4A4火箭"
         audio.play(.tap)
@@ -192,14 +200,50 @@ final class GameViewModel: ObservableObject {
     }
 
     func hint() {
-        guard let action = HintEngine.bestAction(state: state, for: 0) else {
-            notice = "当前没有可提示的牌"
-            audio.play(.error)
-            return
+        guard isHumanTurn else { return }
+        hintTask?.cancel()
+        hintGeneration += 1
+        let generation = hintGeneration
+        let snapshot = state
+        let quick = HintEngine.quickAction(state: snapshot, for: 0)
+
+        if let quick, !quick.cards.isEmpty {
+            selectedCards = Set(quick.cards)
+            notice = "已选中快速提示"
+            audio.play(.tap)
+        } else {
+            notice = "提示中..."
         }
-        selectedCards = Set(action.cards)
-        notice = "已选中推荐牌"
-        audio.play(.tap)
+
+        isHinting = true
+        hintTask = Task { @MainActor [weak self] in
+            let action = await Task.detached(priority: .userInitiated) {
+                HintEngine.bestAction(state: snapshot, for: 0)
+            }.value
+
+            guard let self,
+                  !Task.isCancelled,
+                  self.hintGeneration == generation
+            else { return }
+
+            defer {
+                self.isHinting = false
+                self.hintTask = nil
+            }
+
+            guard self.phase == .playing, self.engine.state == snapshot else { return }
+
+            if let action, !action.cards.isEmpty {
+                self.selectedCards = Set(action.cards)
+                self.notice = "已选中推荐牌"
+                if quick == nil {
+                    self.audio.play(.tap)
+                }
+            } else if quick == nil {
+                self.notice = "当前没有可提示的牌"
+                self.audio.play(.error)
+            }
+        }
     }
 
     func toggleSound() {
@@ -261,16 +305,25 @@ private extension GameViewModel {
         actionBanner = ActionBanner(text: "发牌", subtitle: "\(deckCount)副牌", kind: .deal)
         notice = "正在发牌..."
         let targetCounts = engine.state.hands.map(\.count)
-        let delay = UInt64(max(18_000_000, 58_000_000 / UInt64(deckCount)))
+        let cardsPerPlayerStep = max(1, deckCount)
+        let delay: UInt64 = deckCount == 1 ? 38_000_000 : 22_000_000
 
         Task { @MainActor in
             var remaining = targetCounts.reduce(0, +)
             while remaining > 0 {
-                for playerIndex in targetCounts.indices where visibleHandCounts[playerIndex] < targetCounts[playerIndex] {
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        visibleHandCounts[playerIndex] += 1
+                var changed = false
+                withAnimation(.easeOut(duration: deckCount == 1 ? 0.10 : 0.08)) {
+                    for playerIndex in targetCounts.indices where visibleHandCounts[playerIndex] < targetCounts[playerIndex] {
+                        let increment = min(
+                            cardsPerPlayerStep,
+                            targetCounts[playerIndex] - visibleHandCounts[playerIndex]
+                        )
+                        visibleHandCounts[playerIndex] += increment
+                        remaining -= increment
+                        changed = true
                     }
-                    remaining -= 1
+                }
+                if changed {
                     try? await Task.sleep(nanoseconds: delay)
                 }
             }
@@ -289,6 +342,7 @@ private extension GameViewModel {
 
     func apply(_ action: PlayerAction) {
         guard phase == .playing else { return }
+        cancelHint()
         do {
             let eventCountBefore = engine.state.eventLog.count
             let startsFreshLead = action.startsFreshLead(from: engine.state.prompt)
@@ -309,6 +363,13 @@ private extension GameViewModel {
             notice = message(for: error)
             audio.play(.error)
         }
+    }
+
+    func cancelHint() {
+        hintGeneration += 1
+        hintTask?.cancel()
+        hintTask = nil
+        isHinting = false
     }
 
     func advanceAIIfNeeded() {

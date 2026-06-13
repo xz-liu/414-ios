@@ -134,10 +134,8 @@ public struct AIPlayer: Sendable {
         let handCount = state.hands[playerIndex].count
         let rank = combination.primaryRank?.rawValue ?? 0
         let pressure = aiTablePressure(state: state, playerIndex: playerIndex)
-        let targetIsClose = state.lastPlayableRecord.map {
-            $0.playerIndex != playerIndex && state.hands[$0.playerIndex].count <= 2
-        } ?? false
-        let singleCardThreat = hasSingleCardOpponent(state: state, playerIndex: playerIndex)
+        let threat = ThreatContext(state: state, playerIndex: playerIndex)
+        let defenseIsUrgent = threat.defenseResponsibility >= 55
 
         var score = action.cards.count * 45 - rank * 10
         switch combination.kind {
@@ -166,33 +164,37 @@ public struct AIPlayer: Sendable {
         case .triadWithPair:
             score += handCount <= 8 ? 1_650 : 240
         case .sameRankBomb:
-            score += targetIsClose ? 1_200 : -1_600 + pressure * 18
+            score += -1_600 + pressure * 8 + threat.defenseResponsibility * 24
             score -= combination.sameRankCount * 110
         case .doubleJoker, .rocket414:
-            score += targetIsClose ? 1_600 : -2_200 + pressure * 22
+            score += -2_200 + pressure * 10 + threat.defenseResponsibility * 28
         case .cha, .gou:
             break
         }
 
         if state.prompt.kind == .follow {
-            score += 550 + pressure * 8
-            if combination.isBombLike, !targetIsClose {
-                score -= max(260, 1_700 - pressure * 18)
+            score += 550 + pressure * 4 + threat.defenseResponsibility * 9
+            if combination.isBombLike, !defenseIsUrgent {
+                score -= max(260, 1_700 - threat.defenseResponsibility * 18 - pressure * 5)
             }
         }
 
         if action.cards.contains(where: { $0.rank == .two || $0.rank == .smallJoker || $0.rank == .bigJoker }),
-           !targetIsClose,
+           !defenseIsUrgent,
            handCount > 5 {
-            score -= max(0, 1_250 - pressure * 16)
+            score -= max(0, 1_250 - threat.defenseResponsibility * 14 - pressure * 4)
         }
 
-        if singleCardThreat && (state.prompt.kind == .lead || state.prompt.kind == .follow) {
+        if threat.minimumThreatCards == 1 && (state.prompt.kind == .lead || state.prompt.kind == .follow) {
             if blocksSingleCardOut(combination) {
-                score += 1_450 + pressure * 10
+                score += 520 + threat.defenseResponsibility * 18 + pressure * 4
             } else if combination.kind == .single {
-                score -= 820 + pressure * 6
+                score -= 420 + threat.defenseResponsibility * 7
             }
+        }
+
+        if state.prompt.kind == .lead {
+            score += leadRestrictionScore(combination, threat: threat)
         }
 
         return score
@@ -217,6 +219,23 @@ public struct AIPlayer: Sendable {
 
     private func duplicateRanksUsed(by cards: [Card], in hand: [Card]) -> Int {
         Set(cards.map(\.rank)).filter { hand.count(of: $0) > 1 }.count
+    }
+
+    private func leadRestrictionScore(_ combination: Combination, threat: ThreatContext) -> Int {
+        guard let threatCards = threat.minimumThreatCards else { return 0 }
+        switch threatCards {
+        case 1:
+            return blocksSingleCardOut(combination) ? 900 : (combination.kind == .single ? -650 : 0)
+        case 2:
+            if combination.cards.count >= 3 {
+                return restrictiveShapeScore(combination) + 360
+            }
+            return combination.kind == .pair ? -260 : 0
+        case 3:
+            return restrictiveShapeScore(combination)
+        default:
+            return 0
+        }
     }
 }
 
@@ -273,7 +292,10 @@ private struct AIEvaluator {
     func passScore() -> Int {
         switch state.prompt.kind {
         case .follow:
-            return targetIsCloseToOut ? -900 : -tablePressure * 7
+            let coveredPressure = tablePressure * 2 -
+                threatContext.coverageStrength * 2 -
+                threatContext.interceptReliabilityAfterMe
+            return -max(0, coveredPressure) - threatContext.defenseResponsibility * 14
         case .cha, .gou:
             return 0
         case .lead, .gameOver:
@@ -317,17 +339,21 @@ private struct AIEvaluator {
             benefit += 140
         case .follow:
             benefit += 220
-            if targetIsCloseToOut { benefit += 850 }
-            benefit += tablePressure * 9
+            benefit += tablePressure * 5
+            benefit += threatContext.defenseResponsibility * 12
             if hand.count <= 5 { benefit += 260 }
         case .cha:
             benefit += 360
-            if targetIsCloseToOut { benefit += 720 }
             benefit += tablePressure * 4
+            if threatContext.currentControllerIsThreat {
+                benefit += threatContext.defenseResponsibility * 8
+            }
         case .gou:
             benefit += 920
-            if targetIsCloseToOut { benefit += 520 }
             benefit += tablePressure * 4
+            if threatContext.currentControllerIsThreat {
+                benefit += threatContext.defenseResponsibility * 7
+            }
         case .gameOver:
             break
         }
@@ -346,10 +372,10 @@ private struct AIEvaluator {
 
             if state.prompt.kind == .follow {
                 if combination.isBombLike {
-                    benefit += tablePressure * 7
+                    benefit += tablePressure * 3 + threatContext.defenseResponsibility * 9
                 }
                 if action.cards.contains(where: isControlCard) {
-                    benefit += tablePressure * 5
+                    benefit += tablePressure * 2 + threatContext.defenseResponsibility * 6
                 }
             }
         }
@@ -426,6 +452,10 @@ private struct AIEvaluator {
             }
         }
 
+        if isControlAction(action, combination: combination),
+           ((combination?.kind != .cha && combination?.kind != .gou) || threatContext.currentControllerIsThreat) {
+            cost = responsibilityDiscounted(cost, maxDiscount: 68)
+        }
         return cost
     }
 
@@ -525,7 +555,7 @@ private struct AIEvaluator {
     }
 
     func bombCounterRisk(_ combination: Combination) -> Int {
-        guard !targetIsCloseToOut else { return 0 }
+        guard threatContext.defenseResponsibility < 65 else { return 0 }
         switch combination.kind {
         case .doubleJoker, .rocket414:
             return 0
@@ -554,8 +584,8 @@ private struct AIEvaluator {
         guard let combination else { return 0 }
         guard action.cards.count < hand.count else { return 0 }
 
-        if targetIsCloseToOut || hand.count <= 4 {
-            return 0
+        if threatContext.defenseResponsibility >= 65 || hand.count <= 4 {
+            return unnecessaryControlPenalty(action, combination: combination)
         }
 
         var penalty = 0
@@ -579,7 +609,49 @@ private struct AIEvaluator {
             }
         }
 
-        return pressureDiscounted(penalty, maxDiscount: 86)
+        return responsibilityDiscounted(penalty, maxDiscount: 86) +
+            unnecessaryControlPenalty(action, combination: combination)
+    }
+
+    func unnecessaryControlPenalty(_ action: PlayerAction, combination: Combination) -> Int {
+        guard state.prompt.kind == .follow,
+              let previous = state.lastPlayableRecord?.combination,
+              !previous.isBombLike,
+              combination.isBombLike
+        else { return 0 }
+
+        var penalty = 0
+        if threatContext.coverageStrength >= 70 && !threatContext.currentControllerIsThreat {
+            penalty += 1_250 + threatContext.coverageStrength * 5
+        }
+        if hasSufficientNonBombFollowAnswer() {
+            penalty += 1_450
+        }
+        return penalty
+    }
+
+    func hasSufficientNonBombFollowAnswer() -> Bool {
+        actions.contains { action in
+            guard !action.cards.isEmpty,
+                  let combination = combination(for: action),
+                  !combination.isBombLike,
+                  !action.cards.contains(where: isControlCard)
+            else { return false }
+
+            return isSufficientInterception(combination)
+        }
+    }
+
+    func isSufficientInterception(_ combination: Combination) -> Bool {
+        guard let threatCards = threatContext.minimumThreatCards else { return true }
+        switch threatCards {
+        case 1:
+            return blocksSingleCardOut(combination)
+        case 2:
+            return combination.cards.count >= 3
+        default:
+            return true
+        }
     }
 
     func greedyRunPenalty(
@@ -605,8 +677,8 @@ private struct AIEvaluator {
         if hand.count <= 6 && action.cards.count >= 3 {
             bonus += 180
         }
-        if targetIsCloseToOut && !action.cards.isEmpty {
-            bonus += 160
+        if !action.cards.isEmpty {
+            bonus += threatContext.defenseResponsibility * 2
         }
         if state.prompt.kind == .follow && !action.cards.isEmpty {
             bonus += tablePressure * 2
@@ -615,34 +687,47 @@ private struct AIEvaluator {
     }
 
     func singleCardOutDefenseScore(_ action: PlayerAction, combination: Combination?) -> Int {
-        guard hasSingleCardOpponent(state: state, playerIndex: playerIndex) else { return 0 }
+        guard let threatCards = threatContext.minimumThreatCards else { return 0 }
         guard state.prompt.kind == .lead || state.prompt.kind == .follow else { return 0 }
         guard action.cards.count < hand.count, let combination else { return 0 }
 
-        if blocksSingleCardOut(combination) {
-            var bonus = 1_650 + tablePressure * 9
-            if state.prompt.kind == .follow {
-                bonus += 420
+        switch threatCards {
+        case 1:
+            if blocksSingleCardOut(combination) {
+                var bonus = 420 + threatContext.defenseResponsibility * 17 + tablePressure * 3
+                if state.prompt.kind == .lead {
+                    bonus += 420
+                }
+                switch combination.kind {
+                case .sameRankBomb:
+                    bonus -= 260
+                case .doubleJoker:
+                    bonus -= 520
+                case .rocket414:
+                    bonus -= 760
+                default:
+                    break
+                }
+                return max(260, bonus)
             }
-            switch combination.kind {
-            case .sameRankBomb:
-                bonus -= 260
-            case .doubleJoker:
-                bonus -= 520
-            case .rocket414:
-                bonus -= 760
-            default:
-                break
+            if combination.kind == .single {
+                var penalty = 420 + threatContext.defenseResponsibility * 7
+                if combination.primaryRank == .bigJoker && state.deckCount == 1 {
+                    penalty /= 2
+                }
+                return -penalty
             }
-            return max(420, bonus)
-        }
-
-        if combination.kind == .single {
-            var penalty = 920 + tablePressure * 6
-            if combination.primaryRank == .bigJoker && state.deckCount == 1 {
-                penalty /= 2
+        case 2:
+            if combination.cards.count >= 3 {
+                return 300 + restrictiveShapeScore(combination) + threatContext.defenseResponsibility * 8
             }
-            return -penalty
+            if combination.kind == .pair {
+                return -220
+            }
+        case 3:
+            return restrictiveShapeScore(combination) + threatContext.defenseResponsibility * 3
+        default:
+            break
         }
 
         return 0
@@ -652,20 +737,28 @@ private struct AIEvaluator {
         card.rank == .two || card.rank == .smallJoker || card.rank == .bigJoker
     }
 
-    var targetIsCloseToOut: Bool {
-        state.lastPlayableRecord.map {
-            $0.playerIndex != playerIndex && state.hands[$0.playerIndex].count <= 2
-        } ?? false
-    }
-
     var tablePressure: Int {
         aiTablePressure(state: state, playerIndex: playerIndex)
     }
 
+    var threatContext: ThreatContext {
+        ThreatContext(state: state, playerIndex: playerIndex)
+    }
+
     func pressureDiscounted(_ value: Int, maxDiscount: Int) -> Int {
         guard value > 0 else { return 0 }
-        let discount = min(maxDiscount, tablePressure)
+        let discount = min(maxDiscount, max(tablePressure, threatContext.defenseResponsibility))
         return value * max(0, 100 - discount) / 100
+    }
+
+    func responsibilityDiscounted(_ value: Int, maxDiscount: Int) -> Int {
+        guard value > 0 else { return 0 }
+        let discount = min(maxDiscount, threatContext.defenseResponsibility)
+        return value * max(0, 100 - discount) / 100
+    }
+
+    func isControlAction(_ action: PlayerAction, combination: Combination?) -> Bool {
+        combination?.isBombLike == true || action.cards.contains(where: isControlCard)
     }
 
     func rankValue(_ rank: Rank?) -> Int {
@@ -1041,10 +1134,244 @@ private func aiTablePressure(state: GameState, playerIndex: Int) -> Int {
     return min(100, progressPressure + remainingPressure + lastActorPressure + passPressure)
 }
 
-private func hasSingleCardOpponent(state: GameState, playerIndex: Int) -> Bool {
-    state.hands.indices.contains {
-        $0 != playerIndex && state.hands[$0].count == 1
+private struct ThreatContext {
+    let state: GameState
+    let playerIndex: Int
+    let threatPlayer: Int?
+    let minimumThreatCards: Int?
+    let threatPressure: Int
+    let coverageStrength: Int
+    let interceptReliabilityAfterMe: Int
+    let defenseResponsibility: Int
+    let currentControllerIsThreat: Bool
+
+    init(state: GameState, playerIndex: Int) {
+        self.state = state
+        self.playerIndex = playerIndex
+
+        let threats = state.hands.indices
+            .filter { $0 != playerIndex }
+            .compactMap { index -> (index: Int, count: Int)? in
+                let count = state.hands[index].count
+                return (1...3).contains(count) ? (index, count) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.count != rhs.count {
+                    return lhs.count < rhs.count
+                }
+                if state.lastPlayableRecord?.playerIndex == lhs.index {
+                    return true
+                }
+                if state.lastPlayableRecord?.playerIndex == rhs.index {
+                    return false
+                }
+                return turnDistance(from: playerIndex, to: lhs.index, playerCount: state.players.count) <
+                    turnDistance(from: playerIndex, to: rhs.index, playerCount: state.players.count)
+            }
+
+        guard let threat = threats.first else {
+            self.threatPlayer = nil
+            self.minimumThreatCards = nil
+            self.threatPressure = 0
+            self.coverageStrength = 0
+            self.interceptReliabilityAfterMe = 0
+            self.defenseResponsibility = 0
+            self.currentControllerIsThreat = false
+            return
+        }
+
+        self.threatPlayer = threat.index
+        self.minimumThreatCards = threat.count
+
+        let currentController = state.lastPlayableRecord?.playerIndex
+        let currentCombination = state.lastPlayableRecord?.combination
+        self.currentControllerIsThreat = currentController == threat.index
+        let basePressure: Int
+        switch threat.count {
+        case 1:
+            basePressure = 96
+        case 2:
+            basePressure = 82
+        default:
+            basePressure = 56
+        }
+        let controllerBonus = currentController == threat.index ? 18 : 0
+        let leadBonus = state.prompt.kind == .lead && state.prompt.playerIndex == threat.index ? 12 : 0
+        self.threatPressure = min(
+            100,
+            basePressure + controllerBonus + leadBonus + aiTablePressure(state: state, playerIndex: playerIndex) / 5
+        )
+
+        self.coverageStrength = Self.coverageStrength(
+            threatCards: threat.count,
+            threatPlayer: threat.index,
+            currentController: currentController,
+            currentCombination: currentCombination
+        )
+        self.interceptReliabilityAfterMe = Self.interceptReliabilityAfterMe(
+            state: state,
+            playerIndex: playerIndex,
+            threatPlayer: threat.index,
+            currentController: currentController,
+            currentCombination: currentCombination
+        )
+
+        self.defenseResponsibility = self.threatPressure *
+            max(0, 100 - self.coverageStrength) *
+            max(0, 100 - self.interceptReliabilityAfterMe) / 10_000
     }
+
+    static func coverageStrength(
+        threatCards: Int,
+        threatPlayer: Int,
+        currentController: Int?,
+        currentCombination: Combination?
+    ) -> Int {
+        guard let currentController,
+              currentController != threatPlayer,
+              let currentCombination
+        else { return 0 }
+
+        switch threatCards {
+        case 1:
+            return currentCombination.kind == .single ? 0 : 86
+        case 2:
+            if currentCombination.cards.count >= 3 {
+                return 82
+            }
+            if currentCombination.kind == .pair || currentCombination.kind == .doubleJoker {
+                return 36
+            }
+            return 0
+        default:
+            switch currentCombination.kind {
+            case .singleRun:
+                return 54 + min(18, currentCombination.sequenceLength * 3)
+            case .pairRun:
+                return 68 + min(16, currentCombination.sequenceLength * 3)
+            case .triadWithSingle, .triadWithPair:
+                return 68
+            case .sameRankBomb, .doubleJoker, .rocket414:
+                return 76
+            case .pair:
+                return 24
+            case .single, .cha, .gou:
+                return 0
+            }
+        }
+    }
+
+    static func interceptReliabilityAfterMe(
+        state: GameState,
+        playerIndex: Int,
+        threatPlayer: Int,
+        currentController: Int?,
+        currentCombination: Combination?
+    ) -> Int {
+        guard state.prompt.kind == .follow,
+              let currentController,
+              state.players.indices.contains(currentController)
+        else { return 0 }
+
+        var combined = 0
+        var next = (playerIndex + 1) % state.players.count
+        while next != currentController {
+            if next == threatPlayer {
+                break
+            }
+            let reliability = playerReliability(
+                state: state,
+                playerIndex: playerIndex,
+                candidateIndex: next,
+                threatPlayer: threatPlayer,
+                currentCombination: currentCombination
+            )
+            combined = 100 - ((100 - combined) * (100 - reliability) / 100)
+            next = (next + 1) % state.players.count
+        }
+        return min(92, combined)
+    }
+
+    static func playerReliability(
+        state: GameState,
+        playerIndex: Int,
+        candidateIndex: Int,
+        threatPlayer: Int,
+        currentCombination: Combination?
+    ) -> Int {
+        guard candidateIndex != threatPlayer,
+              state.hands.indices.contains(candidateIndex)
+        else { return 0 }
+
+        let handCount = state.hands[candidateIndex].count
+        guard handCount > 0 else { return 0 }
+
+        var reliability: Int
+        switch handCount {
+        case 1...2:
+            reliability = 10
+        case 3...4:
+            reliability = 24
+        case 5...7:
+            reliability = 42
+        case 8...:
+            reliability = 56
+        default:
+            reliability = 0
+        }
+
+        reliability += min(22, unseenControlCount(state: state, playerIndex: playerIndex) * 4)
+        reliability -= combinationDifficulty(currentCombination)
+        if handCount <= 2 {
+            reliability -= 22
+        }
+
+        return min(85, max(0, reliability))
+    }
+
+    static func unseenControlCount(state: GameState, playerIndex: Int) -> Int {
+        let total = state.deckCount * 6
+        let visibleFromEvents = state.eventLog.reduce(0) { partial, record in
+            partial + (record.combination?.cards.filter(isControlCard).count ?? 0)
+        }
+        let ownControls = state.hands.indices.contains(playerIndex) ?
+            state.hands[playerIndex].filter(isControlCard).count : 0
+        return max(0, total - visibleFromEvents - ownControls)
+    }
+
+    static func combinationDifficulty(_ combination: Combination?) -> Int {
+        guard let combination else { return 0 }
+        let rank = combination.primaryRank?.rawValue ?? 0
+        switch combination.kind {
+        case .single:
+            return max(0, (rank - Rank.queen.rawValue) * 7)
+        case .pair:
+            return 14 + max(0, (rank - Rank.jack.rawValue) * 5)
+        case .singleRun:
+            return 18 + combination.sequenceLength * 3
+        case .pairRun:
+            return 38 + combination.sequenceLength * 4
+        case .triadWithSingle, .triadWithPair:
+            return 32
+        case .sameRankBomb:
+            return 68 + combination.sameRankCount * 4
+        case .doubleJoker:
+            return 84
+        case .rocket414:
+            return 96
+        case .cha, .gou:
+            return 48
+        }
+    }
+
+    static func isControlCard(_ card: Card) -> Bool {
+        card.rank == .two || card.rank == .smallJoker || card.rank == .bigJoker
+    }
+}
+
+private func turnDistance(from start: Int, to end: Int, playerCount: Int) -> Int {
+    guard playerCount > 0 else { return 0 }
+    return (end - start + playerCount) % playerCount
 }
 
 private func blocksSingleCardOut(_ combination: Combination) -> Bool {
@@ -1060,6 +1387,31 @@ private func blocksSingleCardOut(_ combination: Combination) -> Bool {
         return true
     case .single, .cha, .gou:
         return false
+    }
+}
+
+private func restrictiveShapeScore(_ combination: Combination) -> Int {
+    switch combination.kind {
+    case .single:
+        return -280
+    case .pair:
+        return 120
+    case .singleRun:
+        return 320 + combination.sequenceLength * 55
+    case .pairRun:
+        return 500 + combination.sequenceLength * 65
+    case .triadWithSingle:
+        return 460
+    case .triadWithPair:
+        return 540
+    case .sameRankBomb:
+        return 360 + combination.sameRankCount * 45
+    case .doubleJoker:
+        return 420
+    case .rocket414:
+        return 500
+    case .cha, .gou:
+        return 0
     }
 }
 

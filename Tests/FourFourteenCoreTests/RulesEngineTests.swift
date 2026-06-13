@@ -195,4 +195,32 @@ struct RulesEngineTests {
         #expect(!hint.cards.isEmpty)
         #expect(Set(hint.cards).isSubset(of: Set(engine.state.hands[0])))
     }
+
+    @Test("quick hint returns a legal runnable shape without full AI search")
+    func quickHintUsesRunnableLegalAction() throws {
+        let players = [
+            GamePlayer(name: "Human", isHuman: true),
+            GamePlayer(name: "AI1", isHuman: false),
+            GamePlayer(name: "AI2", isHuman: false),
+            GamePlayer(name: "AI3", isHuman: false)
+        ]
+        let hand = [
+            c(.three, .hearts),
+            c(.four, .clubs),
+            c(.five, .spades),
+            c(.two, .diamonds),
+            c(.bigJoker, nil)
+        ]
+        let state = GameState(
+            deckCount: 1,
+            players: players,
+            hands: [hand, [], [], []],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 0)
+        )
+
+        let hint = try #require(HintEngine.quickAction(state: state, for: 0))
+        let combination = try #require(RulesEngine.classify(hint.cards))
+        #expect(combination.kind == .singleRun)
+        #expect(Set(hint.cards).isSubset(of: Set(hand)))
+    }
 }

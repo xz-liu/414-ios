@@ -558,6 +558,147 @@ struct GameEngineTests {
         #expect(combination?.primaryRank == .three)
     }
 
+    @Test("AI saves a bomb when the table shape already covers the short-card threat")
+    func aiSavesBombWhenCurrentTableShapeCoversThreat() {
+        let previous = Combination(
+            kind: .pair,
+            cards: [card(.queen, .hearts), card(.queen, .clubs)],
+            primaryRank: .queen
+        )
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.ace, .spades)],
+                [
+                    card(.four, .hearts),
+                    card(.five, .hearts),
+                    card(.six, .hearts),
+                    card(.seven, .hearts),
+                    card(.eight, .hearts),
+                    card(.nine, .hearts)
+                ],
+                [card(.three, .clubs), card(.four, .clubs), card(.five, .clubs)],
+                [
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .spades),
+                    card(.eight, .clubs),
+                    card(.nine, .clubs)
+                ]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 3),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 2,
+                playerName: "AI2",
+                combination: previous,
+                kind: .normal,
+                message: "AI2出对子"
+            )
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 3)
+        #expect(action == .pass)
+    }
+
+    @Test("AI uses a bomb when it is the last reliable interception point")
+    func aiUsesBombWhenNoReliableInterceptorRemains() {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.ace, .spades)],
+                [
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .spades),
+                    card(.eight, .clubs),
+                    card(.nine, .clubs)
+                ],
+                [card(.four, .clubs)],
+                [card(.five, .clubs)]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(
+                    kind: .pair,
+                    cards: [card(.king, .hearts), card(.king, .clubs)],
+                    primaryRank: .king
+                ),
+                kind: .normal,
+                message: "Human出对子"
+            )
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        let combination = RulesEngine.classify(action.cards)
+        #expect(combination?.kind == .sameRankBomb)
+        #expect(combination?.primaryRank == .three)
+    }
+
+    @Test("AI chooses the lowest sufficient interception over a bomb")
+    func aiPrefersOrdinaryInterceptionOverBomb() {
+        let pairAces = [card(.ace, .hearts), card(.ace, .clubs)]
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.nine, .spades)],
+                pairAces + [
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .spades),
+                    card(.five, .clubs)
+                ],
+                [card(.four, .clubs)],
+                [card(.five, .clubs)]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(
+                    kind: .pair,
+                    cards: [card(.king, .hearts), card(.king, .clubs)],
+                    primaryRank: .king
+                ),
+                kind: .normal,
+                message: "Human出对子"
+            )
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        #expect(Set(action.cards) == Set(pairAces))
+    }
+
+    @Test("AI leads a three-or-more-card shape when an opponent has two cards")
+    func aiRestrictsTwoCardOpponentOnLead() {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.ace, .spades), card(.king, .spades)],
+                [
+                    card(.three, .hearts),
+                    card(.four, .hearts),
+                    card(.five, .hearts),
+                    card(.six, .hearts),
+                    card(.six, .clubs),
+                    card(.nine, .clubs)
+                ],
+                [card(.four, .clubs), card(.five, .clubs), card(.six, .clubs)],
+                [card(.seven, .clubs), card(.eight, .clubs), card(.nine, .clubs)]
+            ],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 1)
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        #expect(action.cards.count >= 3)
+        #expect(RulesEngine.classify(action.cards)?.kind == .singleRun)
+    }
+
     @Test("AI chooses legal actions promptly for multi deck opening hands")
     func aiChoosesPromptlyForMultiDeckOpeningHands() throws {
         let ai = AIPlayer()
