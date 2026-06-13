@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct DouDizhuTableView: View {
-    @StateObject private var model = DouDizhuViewModel()
+struct RunFastTableView: View {
+    @StateObject private var model = RunFastViewModel()
     let onExit: () -> Void
 
     var body: some View {
@@ -26,22 +26,20 @@ struct DouDizhuTableView: View {
             iconButton(icon: "chevron.left", active: false, action: onExit)
 
             HStack(spacing: 5) {
-                Text("斗地主")
+                Text("跑得快")
                     .font(.headline.weight(.black))
-                    .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
-                Text(roleText)
+                    .foregroundStyle(Color(red: 0.34, green: 0.76, blue: 1.00))
+                Text("黑桃3先出")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(.white.opacity(0.78))
             }
-            .frame(width: 110, alignment: .leading)
+            .frame(width: 132, alignment: .leading)
 
             Text(model.notice.isEmpty ? model.promptText : model.notice)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(model.notice.isEmpty ? .white.opacity(0.78) : .yellow)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            bottomCardsView
 
             topDealButton
 
@@ -73,17 +71,11 @@ struct DouDizhuTableView: View {
                         .frame(width: min(330, width * 0.62), height: min(150, height * 0.72))
                         .position(x: width * 0.50, y: height * 0.54)
                         .zIndex(3)
-                } else if model.state.phase == .gameOver {
+                } else if model.state.isGameOver {
                     scoreView
-                        .frame(width: min(340, width * 0.50), height: min(150, height * 0.72))
+                        .frame(width: min(330, width * 0.50), height: min(150, height * 0.72))
                         .position(x: width * 0.50, y: height * 0.52)
                         .zIndex(3)
-                } else if model.state.phase == .noLandlord {
-                    Text("无人叫地主，请重发")
-                        .font(.title3.weight(.black))
-                        .foregroundStyle(.yellow)
-                        .shadow(color: .black.opacity(0.55), radius: 6, y: 3)
-                        .position(x: width * 0.50, y: height * 0.52)
                 } else {
                     Text(model.promptText)
                         .font(.caption.weight(.bold))
@@ -93,20 +85,17 @@ struct DouDizhuTableView: View {
                 }
 
                 playerPanel(index: 1)
-                    .frame(width: 92, height: 52)
-                    .position(x: 74, y: 36)
-
+                    .frame(width: 96, height: 52)
+                    .position(x: 72, y: 36)
                 playerPanel(index: 2)
-                    .frame(width: 92, height: 52)
-                    .position(x: width - 74, y: 36)
+                    .frame(width: 96, height: 52)
+                    .position(x: width - 72, y: 36)
 
-                playSlot(index: 1, width: min(240, width * 0.34))
-                    .position(x: width * 0.29, y: height * 0.45)
-
-                playSlot(index: 2, width: min(240, width * 0.34))
-                    .position(x: width * 0.71, y: height * 0.45)
-
-                playSlot(index: 0, width: min(300, width * 0.48))
+                playSlot(index: 1, width: min(260, width * 0.38))
+                    .position(x: width * 0.30, y: height * 0.42)
+                playSlot(index: 2, width: min(260, width * 0.38))
+                    .position(x: width * 0.70, y: height * 0.42)
+                playSlot(index: 0, width: min(320, width * 0.52))
                     .position(x: width * 0.50, y: max(height - 42, height * 0.76))
             }
         }
@@ -115,7 +104,7 @@ struct DouDizhuTableView: View {
     private var bottomArea: some View {
         VStack(spacing: 4) {
             controls
-                .frame(maxWidth: 560)
+                .frame(maxWidth: 480)
             VStack(alignment: .leading, spacing: 2) {
                 HandSpreadView(
                     cards: model.humanHand,
@@ -125,7 +114,7 @@ struct DouDizhuTableView: View {
                 } onSelectCards: { cards in
                     model.select(cards)
                 }
-                .frame(height: handSpreadHeight)
+                .frame(height: 82)
 
                 HStack(spacing: 7) {
                     Text("\(model.visibleCardCount(for: 0))张")
@@ -141,40 +130,19 @@ struct DouDizhuTableView: View {
                 .padding(.horizontal, 8)
             }
         }
-        .frame(height: bottomAreaHeight)
-    }
-
-    private var handSpreadHeight: CGFloat {
-        model.visibleCardCount(for: 0) > 22 ? 104 : 82
-    }
-
-    private var bottomAreaHeight: CGFloat {
-        model.visibleCardCount(for: 0) > 22 ? 164 : 138
+        .frame(height: 138)
     }
 
     private var controls: some View {
         Group {
             if model.phase != .playing {
-                HStack(spacing: 7) {
-                    actionButton(
-                        model.isDealing ? "发牌中" : "发牌",
-                        icon: model.isDealing ? "hourglass" : "play.fill",
-                        enabled: model.isWaiting,
-                        tint: Color(red: 1.00, green: 0.56, blue: 0.12)
-                    ) {
-                        model.dealNewGame()
-                    }
-                }
-            } else if model.state.phase == .bidding {
-                HStack(spacing: 7) {
-                    actionButton("不叫", icon: "xmark", enabled: model.canBid, tint: Color(red: 0.34, green: 0.38, blue: 0.45)) {
-                        model.passBid()
-                    }
-                    ForEach([1, 2, 3], id: \.self) { value in
-                        actionButton("\(value)分", icon: "flag.fill", enabled: model.canBid && model.legalBidValues.contains(value), tint: bidColor(value)) {
-                            model.bid(value)
-                        }
-                    }
+                actionButton(
+                    model.isDealing ? "发牌中" : "发牌",
+                    icon: model.isDealing ? "hourglass" : "play.fill",
+                    enabled: model.isWaiting,
+                    tint: Color(red: 0.34, green: 0.76, blue: 1.00)
+                ) {
+                    model.dealNewGame()
                 }
             } else {
                 HStack(spacing: 7) {
@@ -192,21 +160,6 @@ struct DouDizhuTableView: View {
         }
     }
 
-    private var bottomCardsView: some View {
-        HStack(spacing: -12) {
-            if model.bottomCardsVisible.isEmpty {
-                ForEach(0..<3, id: \.self) { _ in
-                    cardBack
-                }
-            } else {
-                ForEach(model.bottomCardsVisible) { card in
-                    PlayingCardView(card: card, selected: false, compact: true, width: 26, height: 36)
-                }
-            }
-        }
-        .frame(width: 66, height: 34)
-    }
-
     private var preGamePanel: some View {
         VStack(spacing: 10) {
             Text(model.isDealing ? "正在发牌" : "准备发牌")
@@ -215,19 +168,9 @@ struct DouDizhuTableView: View {
                 .lineLimit(1)
                 .shadow(color: .black.opacity(0.55), radius: 7, y: 3)
 
-            HStack(spacing: 22) {
+            HStack(spacing: 24) {
                 ForEach(0..<3, id: \.self) { index in
-                    VStack(spacing: 2) {
-                        Text(model.state.players[index].name)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white.opacity(0.76))
-                            .lineLimit(1)
-                        Text("\(model.visibleCardCount(for: index))")
-                            .font(.title2.weight(.black))
-                            .foregroundStyle(.yellow)
-                            .shadow(color: .yellow.opacity(0.40), radius: 7)
-                    }
-                    .frame(width: 62)
+                    playerCountColumn(index)
                 }
             }
 
@@ -238,11 +181,11 @@ struct DouDizhuTableView: View {
                     Label("发牌", systemImage: "play.fill")
                         .font(.headline.weight(.black))
                         .frame(width: 142, height: 40)
-                        .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
+                        .foregroundStyle(Color(red: 0.34, green: 0.76, blue: 1.00))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .shadow(color: Color.orange.opacity(0.82), radius: 8)
+                .shadow(color: Color.blue.opacity(0.70), radius: 8)
                 .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
             } else {
                 ProgressView()
@@ -254,24 +197,18 @@ struct DouDizhuTableView: View {
         .shadow(color: .black.opacity(0.58), radius: 8, y: 4)
     }
 
-    private var cardBack: some View {
-        RoundedRectangle(cornerRadius: 5)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.15, green: 0.28, blue: 0.55),
-                        Color(red: 0.06, green: 0.12, blue: 0.24)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(.white.opacity(0.35), lineWidth: 1)
-            )
-            .frame(width: 26, height: 36)
-            .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
+    private func playerCountColumn(_ index: Int) -> some View {
+        VStack(spacing: 2) {
+            Text(model.state.players[index].name)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.76))
+                .lineLimit(1)
+            Text("\(model.visibleCardCount(for: index))")
+                .font(.title2.weight(.black))
+                .foregroundStyle(.yellow)
+                .shadow(color: .yellow.opacity(0.40), radius: 7)
+        }
+        .frame(width: 62)
     }
 
     private var scoreView: some View {
@@ -282,9 +219,9 @@ struct DouDizhuTableView: View {
             ForEach(model.state.scores, id: \.playerIndex) { score in
                 HStack(spacing: 6) {
                     Text(score.playerName)
-                        .frame(width: 56, alignment: .leading)
-                    Text(score.team == .landlord ? "地主" : "农民")
-                        .frame(width: 36, alignment: .leading)
+                        .frame(width: 58, alignment: .leading)
+                    Text("剩\(score.remainingCards)")
+                        .frame(width: 44, alignment: .leading)
                     Spacer()
                     Text(score.delta > 0 ? "+\(score.delta)" : "\(score.delta)")
                         .foregroundStyle(score.delta > 0 ? .yellow : .white.opacity(0.82))
@@ -292,18 +229,13 @@ struct DouDizhuTableView: View {
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
             }
-            Text(model.state.scores.first?.notes.joined(separator: " · ") ?? "")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.62))
-                .lineLimit(1)
-            Spacer(minLength: 0)
         }
         .padding(8)
         .shadow(color: .black.opacity(0.60), radius: 6, y: 3)
     }
 
     private func playerPanel(index: Int) -> some View {
-        let highlighted = model.phase == .playing && model.state.currentPlayerIndex == index && model.state.phase != .gameOver
+        let highlighted = model.phase == .playing && model.state.currentPlayerIndex == index && !model.state.isGameOver
         return VStack(spacing: 2) {
             Text(model.state.players[index].name)
                 .font(.caption2.weight(.bold))
@@ -321,7 +253,7 @@ struct DouDizhuTableView: View {
     }
 
     private func playSlot(index: Int, width: CGFloat) -> some View {
-        DouDizhuPlaySlotView(
+        RunFastPlaySlotView(
             playerName: model.state.players[index].name,
             record: model.tableRecord(for: index)
         )
@@ -350,8 +282,8 @@ struct DouDizhuTableView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.80)
                 .frame(width: 78, height: 34)
-                .foregroundStyle(model.isDealing ? .white.opacity(0.40) : Color(red: 1.00, green: 0.56, blue: 0.12))
-                .shadow(color: model.isDealing ? .clear : Color.orange.opacity(0.82), radius: 7)
+                .foregroundStyle(model.isDealing ? .white.opacity(0.40) : Color(red: 0.34, green: 0.76, blue: 1.00))
+                .shadow(color: model.isDealing ? .clear : Color.blue.opacity(0.70), radius: 7)
                 .shadow(color: .black.opacity(model.isDealing ? 0.15 : 0.34), radius: 2, y: 1)
                 .contentShape(Rectangle())
         }
@@ -387,25 +319,6 @@ struct DouDizhuTableView: View {
         .disabled(!enabled)
     }
 
-    private func bidColor(_ value: Int) -> Color {
-        switch value {
-        case 1:
-            return Color(red: 0.18, green: 0.48, blue: 0.78)
-        case 2:
-            return Color(red: 0.86, green: 0.45, blue: 0.12)
-        default:
-            return Color(red: 0.82, green: 0.12, blue: 0.08)
-        }
-    }
-
-    private var roleText: String {
-        guard model.phase == .playing else {
-            return "待发牌"
-        }
-        guard let landlord = model.state.landlordIndex else { return "叫地主" }
-        return landlord == 0 ? "你是地主" : "你是农民"
-    }
-
     private var dealButtonTitle: String {
         switch model.phase {
         case .waiting:
@@ -418,9 +331,9 @@ struct DouDizhuTableView: View {
     }
 }
 
-private struct DouDizhuPlaySlotView: View {
+private struct RunFastPlaySlotView: View {
     let playerName: String
-    let record: DouDizhuPlayRecord?
+    let record: RunFastPlayRecord?
 
     var body: some View {
         Group {
@@ -453,18 +366,18 @@ private struct DouDizhuPlaySlotView: View {
         }
     }
 
-    private func title(for record: DouDizhuPlayRecord) -> String {
+    private func title(for record: RunFastPlayRecord) -> String {
         switch record.kind {
         case .play:
             return "\(playerName) · \(record.combination?.displayName ?? "出牌")"
         case .pass:
             return "\(playerName) · 过"
-        case .bid, .landlord, .system:
+        case .system:
             return record.message
         }
     }
 
-    private func titleColor(for record: DouDizhuPlayRecord) -> Color {
+    private func titleColor(for record: RunFastPlayRecord) -> Color {
         switch record.kind {
         case .play:
             if record.combination?.isBombLike == true {
@@ -473,8 +386,6 @@ private struct DouDizhuPlaySlotView: View {
             return .white.opacity(0.88)
         case .pass:
             return .white.opacity(0.62)
-        case .bid, .landlord:
-            return Color(red: 1.00, green: 0.64, blue: 0.16)
         case .system:
             return .yellow
         }

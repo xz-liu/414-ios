@@ -135,6 +135,7 @@ public struct AIPlayer: Sendable {
         let rank = combination.primaryRank?.rawValue ?? 0
         let pressure = aiTablePressure(state: state, playerIndex: playerIndex)
         let threat = ThreatContext(state: state, playerIndex: playerIndex)
+        let controlProfile = ControlProfile(state: state, hand: hand)
         let defenseIsUrgent = threat.defenseResponsibility >= 55
 
         var score = action.cards.count * 45 - rank * 10
@@ -166,23 +167,33 @@ public struct AIPlayer: Sendable {
         case .sameRankBomb:
             score += -1_600 + pressure * 8 + threat.defenseResponsibility * 24
             score -= combination.sameRankCount * 110
+            score += controlProfile.bombCandidateBonus(for: combination)
         case .doubleJoker, .rocket414:
             score += -2_200 + pressure * 10 + threat.defenseResponsibility * 28
+            score += controlProfile.controlCandidateBonus
         case .cha, .gou:
             break
         }
 
         if state.prompt.kind == .follow {
-            score += 550 + pressure * 4 + threat.defenseResponsibility * 9
+            score += 550 + pressure * 4 + controlProfile.followPressureBonus * 5 + threat.defenseResponsibility * 9
             if combination.isBombLike, !defenseIsUrgent {
-                score -= max(260, 1_700 - threat.defenseResponsibility * 18 - pressure * 5)
+                let penalty = max(
+                    260,
+                    1_700 - threat.defenseResponsibility * 18 - pressure * 5 - controlProfile.followPressureBonus * 8
+                )
+                score -= penalty * controlProfile.overkillPenaltyPercent(for: combination) / 100
             }
         }
 
         if action.cards.contains(where: { $0.rank == .two || $0.rank == .smallJoker || $0.rank == .bigJoker }),
            !defenseIsUrgent,
            handCount > 5 {
-            score -= max(0, 1_250 - threat.defenseResponsibility * 14 - pressure * 4)
+            let penalty = max(
+                0,
+                1_250 - threat.defenseResponsibility * 14 - pressure * 4 - controlProfile.followPressureBonus * 7
+            )
+            score -= penalty * controlProfile.resourceCostPercent(for: action, combination: combination) / 100
         }
 
         if threat.minimumThreatCards == 1 && (state.prompt.kind == .lead || state.prompt.kind == .follow) {
@@ -243,7 +254,18 @@ private struct AIEvaluator {
     let state: GameState
     let playerIndex: Int
     let actions: [PlayerAction]
+    let controlProfile: ControlProfile
     var metricsCache: [String: PlanMetrics] = [:]
+
+    init(state: GameState, playerIndex: Int, actions: [PlayerAction]) {
+        self.state = state
+        self.playerIndex = playerIndex
+        self.actions = actions
+        self.controlProfile = ControlProfile(
+            state: state,
+            hand: state.hands[playerIndex]
+        )
+    }
 
     var hand: [Card] {
         state.hands[playerIndex]
@@ -295,7 +317,8 @@ private struct AIEvaluator {
             let coveredPressure = tablePressure * 2 -
                 threatContext.coverageStrength * 2 -
                 threatContext.interceptReliabilityAfterMe
-            return -max(0, coveredPressure) - threatContext.defenseResponsibility * 14
+            return -max(0, coveredPressure + controlProfile.followPressureBonus) -
+                threatContext.defenseResponsibility * 14
         case .cha, .gou:
             return 0
         case .lead, .gameOver:
@@ -340,6 +363,7 @@ private struct AIEvaluator {
         case .follow:
             benefit += 220
             benefit += tablePressure * 5
+            benefit += controlProfile.followPressureBonus * 5
             benefit += threatContext.defenseResponsibility * 12
             if hand.count <= 5 { benefit += 260 }
         case .cha:
@@ -372,12 +396,18 @@ private struct AIEvaluator {
 
             if state.prompt.kind == .follow {
                 if combination.isBombLike {
-                    benefit += tablePressure * 3 + threatContext.defenseResponsibility * 9
+                    benefit += tablePressure * 3 +
+                        controlProfile.followPressureBonus * 4 +
+                        threatContext.defenseResponsibility * 9
                 }
                 if action.cards.contains(where: isControlCard) {
-                    benefit += tablePressure * 2 + threatContext.defenseResponsibility * 6
+                    benefit += tablePressure * 2 +
+                        controlProfile.followPressureBonus * 3 +
+                        threatContext.defenseResponsibility * 6
                 }
             }
+
+            benefit += controlProfile.actionUseBonus(action: action, combination: combination)
         }
 
         benefit += productiveShapeBenefit(action, combination: combination, before: before, after: after)
@@ -455,6 +485,9 @@ private struct AIEvaluator {
         if isControlAction(action, combination: combination),
            ((combination?.kind != .cha && combination?.kind != .gou) || threatContext.currentControllerIsThreat) {
             cost = responsibilityDiscounted(cost, maxDiscount: 68)
+        }
+        if shouldApplyResourceProfile(action, combination: combination) {
+            cost = cost * controlProfile.resourceCostPercent(for: action, combination: combination) / 100
         }
         return cost
     }
@@ -609,8 +642,15 @@ private struct AIEvaluator {
             }
         }
 
-        return responsibilityDiscounted(penalty, maxDiscount: 86) +
+        let profilePenaltyPercent = controlProfile.overkillPenaltyPercent(for: combination)
+        let scaledPenalty = shouldApplyResourceProfile(action, combination: combination) ?
+            penalty * profilePenaltyPercent / 100 :
+            penalty
+        let unnecessaryPenalty = shouldApplyResourceProfile(action, combination: combination) ?
+            unnecessaryControlPenalty(action, combination: combination) * max(62, profilePenaltyPercent) / 100 :
             unnecessaryControlPenalty(action, combination: combination)
+
+        return responsibilityDiscounted(scaledPenalty, maxDiscount: 86) + unnecessaryPenalty
     }
 
     func unnecessaryControlPenalty(_ action: PlayerAction, combination: Combination) -> Int {
@@ -759,6 +799,19 @@ private struct AIEvaluator {
 
     func isControlAction(_ action: PlayerAction, combination: Combination?) -> Bool {
         combination?.isBombLike == true || action.cards.contains(where: isControlCard)
+    }
+
+    func shouldApplyResourceProfile(_ action: PlayerAction, combination: Combination?) -> Bool {
+        guard state.deckCount > 1 || controlProfile.hasAbundantResources else { return false }
+        if isControlAction(action, combination: combination) {
+            return true
+        }
+        switch combination?.kind {
+        case .triadWithSingle, .triadWithPair:
+            return true
+        default:
+            return action.cards.contains { rankValue($0.rank) >= Rank.ace.rawValue }
+        }
     }
 
     func rankValue(_ rank: Rank?) -> Int {
@@ -1108,6 +1161,150 @@ private struct AIEvaluator {
     }
 }
 
+private struct ControlProfile {
+    let deckCount: Int
+    let progressPercent: Int
+    let resourceDensityCoefficient: Double
+    let resourceCostPercent: Int
+    let overkillPenaltyPercent: Int
+    let followPressureBonus: Int
+    let bombCandidateBonus: Int
+    let controlCandidateBonus: Int
+    let hasAbundantResources: Bool
+    private let bombSurplus: Double
+
+    init(state: GameState, hand: [Card]) {
+        let deckCount = max(1, state.deckCount)
+        let totalCards = max(1, deckCount * 54)
+        let playedCards = min(totalCards, max(0, state.cardsPlayedCount.reduce(0, +)))
+        let progressPercent = min(100, playedCards * 100 / totalCards)
+
+        let controlCardCount = hand.filter(Self.isControlCard).count
+        let expectedControlCards = max(1.0, Double(hand.count) / 9.0)
+        let controlSurplus = max(0.0, Double(controlCardCount) - expectedControlCards)
+
+        let groups = Dictionary(grouping: hand, by: \.rank)
+        let bombGroups = groups.values.filter { $0.count >= 3 }.count
+        let strongBombGroups = groups.values.filter { $0.count >= 4 }.count
+        let extraBombCards = groups.values.reduce(0) { partial, cards in
+            partial + max(0, cards.count - 3)
+        }
+        let doubleJokerCount = min(hand.count(of: .smallJoker), hand.count(of: .bigJoker))
+        let bombLoad = Double(
+            bombGroups * 2 +
+                strongBombGroups +
+                extraBombCards / 2 +
+                hand.rocket414Count() * 3 +
+                doubleJokerCount * 2
+        )
+        let initialHandShare = max(1.0, Double(totalCards) / 4.0)
+        let currentHandRatio = max(0.35, Double(hand.count) / initialHandShare)
+        let expectedBombLoad = max(1.0, Double(deckCount) * 2.4 * currentHandRatio)
+        let bombSurplus = max(0.0, bombLoad - expectedBombLoad)
+
+        let deckDensity = 1.0 + Double(deckCount - 1) * 0.18
+        let handDensity = min(0.58, controlSurplus * 0.045 + bombSurplus * 0.075)
+        let progressDensity = min(0.18, Double(progressPercent) / 550.0)
+        let resourceDensityCoefficient = min(1.95, deckDensity + handDensity + progressDensity)
+
+        let densityDiscount = min(50, Int((resourceDensityCoefficient - 1.0) * 62.0))
+        let progressDiscount = min(14, progressPercent / 7)
+        let totalDiscount = min(62, densityDiscount + progressDiscount)
+
+        self.deckCount = deckCount
+        self.progressPercent = progressPercent
+        self.resourceDensityCoefficient = resourceDensityCoefficient
+        self.resourceCostPercent = max(42, 100 - totalDiscount)
+        self.overkillPenaltyPercent = max(48, 100 - min(46, totalDiscount + progressPercent / 8))
+        self.followPressureBonus = min(
+            68,
+            Int((resourceDensityCoefficient - 1.0) * 48.0) +
+                Int(controlSurplus * 2.0) +
+                Int(bombSurplus * 3.5) +
+                progressPercent / 5
+        )
+        self.bombCandidateBonus = min(
+            1_300,
+            Int((resourceDensityCoefficient - 1.0) * 360.0) +
+                Int(bombSurplus * 150.0) +
+                followPressureBonus * 8
+        )
+        self.controlCandidateBonus = min(
+            1_050,
+            Int((resourceDensityCoefficient - 1.0) * 300.0) +
+                Int((controlSurplus + bombSurplus) * 105.0) +
+                followPressureBonus * 7
+        )
+        self.hasAbundantResources =
+            controlSurplus >= 2.0 ||
+            bombSurplus >= 2.0 ||
+            resourceDensityCoefficient >= 1.34
+        self.bombSurplus = bombSurplus
+    }
+
+    func actionUseBonus(action: PlayerAction, combination: Combination?) -> Int {
+        guard !action.cards.isEmpty, let combination else { return 0 }
+        var bonus = 0
+        if combination.isBombLike {
+            bonus += bombCandidateBonus(for: combination) / 2
+        }
+        if action.cards.contains(where: Self.isControlCard) {
+            bonus += controlCandidateBonus / 2
+        }
+        if combination.kind == .triadWithSingle || combination.kind == .triadWithPair {
+            bonus += hasAbundantResources ? 120 : 0
+        }
+        return bonus
+    }
+
+    func resourceCostPercent(for action: PlayerAction, combination: Combination?) -> Int {
+        guard let combination else { return resourceCostPercent }
+        switch combination.kind {
+        case .sameRankBomb:
+            return sameRankBombCostPercent(sameRankCount: combination.sameRankCount)
+        case .doubleJoker, .rocket414:
+            return max(52, resourceCostPercent + 8)
+        default:
+            return resourceCostPercent
+        }
+    }
+
+    func overkillPenaltyPercent(for combination: Combination?) -> Int {
+        guard let combination else { return overkillPenaltyPercent }
+        switch combination.kind {
+        case .sameRankBomb:
+            return max(42, sameRankBombCostPercent(sameRankCount: combination.sameRankCount) - 8)
+        case .doubleJoker, .rocket414:
+            return max(56, overkillPenaltyPercent + 8)
+        default:
+            return overkillPenaltyPercent
+        }
+    }
+
+    func bombCandidateBonus(for combination: Combination) -> Int {
+        guard combination.kind == .sameRankBomb else { return bombCandidateBonus }
+        let commonnessBonus = max(0, deckCount - 1) *
+            max(0, 6 - combination.sameRankCount) *
+            90
+        let densityBonus = Int((resourceDensityCoefficient - 1.0) * 240.0)
+        let abundanceBonus = min(700, Int(bombSurplus * 120.0))
+        return min(1_700, bombCandidateBonus + commonnessBonus + densityBonus + abundanceBonus)
+    }
+
+    private func sameRankBombCostPercent(sameRankCount: Int) -> Int {
+        let commonnessBoost = Double(max(0, deckCount - 1) * max(0, 6 - sameRankCount)) * 0.08
+        let bombCoefficient = min(2.3, resourceDensityCoefficient + commonnessBoost)
+        let progressDiscount = min(12, progressPercent / 8)
+        let sizePenalty = max(0, sameRankCount - 3) * 9
+        let percent = Int((100.0 / bombCoefficient).rounded()) - progressDiscount + sizePenalty
+        return min(100, max(38, percent))
+    }
+
+    private static func isControlCard(_ card: Card) -> Bool {
+        card.rank == .two || card.rank == .smallJoker || card.rank == .bigJoker
+    }
+}
+
 private func aiTablePressure(state: GameState, playerIndex: Int) -> Int {
     let totalCards = max(1, state.deckCount * 54)
     let playedCards = min(totalCards, max(0, state.cardsPlayedCount.reduce(0, +)))
@@ -1118,7 +1315,8 @@ private func aiTablePressure(state: GameState, playerIndex: Int) -> Int {
         .map { state.hands[$0].count }
         .filter { $0 > 0 }
     let minOpponentCards = opponentCounts.min() ?? 99
-    let remainingPressure = max(0, 72 - minOpponentCards * 8)
+    let dangerWindow = max(9, state.deckCount * 7)
+    let remainingPressure = min(72, max(0, 72 - minOpponentCards * 72 / dangerWindow))
 
     var lastActorPressure = 0
     if let lastRecord = state.lastPlayableRecord,
@@ -1149,11 +1347,12 @@ private struct ThreatContext {
         self.state = state
         self.playerIndex = playerIndex
 
+        let threatCardLimit = Self.threatCardLimit(deckCount: state.deckCount)
         let threats = state.hands.indices
             .filter { $0 != playerIndex }
             .compactMap { index -> (index: Int, count: Int)? in
                 let count = state.hands[index].count
-                return (1...3).contains(count) ? (index, count) : nil
+                return (1...threatCardLimit).contains(count) ? (index, count) : nil
             }
             .sorted { lhs, rhs in
                 if lhs.count != rhs.count {
@@ -1192,8 +1391,10 @@ private struct ThreatContext {
             basePressure = 96
         case 2:
             basePressure = 82
-        default:
+        case 3:
             basePressure = 56
+        default:
+            basePressure = max(24, 56 - (threat.count - 3) * 7)
         }
         let controllerBonus = currentController == threat.index ? 18 : 0
         let leadBonus = state.prompt.kind == .lead && state.prompt.playerIndex == threat.index ? 12 : 0
@@ -1219,6 +1420,10 @@ private struct ThreatContext {
         self.defenseResponsibility = self.threatPressure *
             max(0, 100 - self.coverageStrength) *
             max(0, 100 - self.interceptReliabilityAfterMe) / 10_000
+    }
+
+    static func threatCardLimit(deckCount: Int) -> Int {
+        max(3, min(12, deckCount * 3))
     }
 
     static func coverageStrength(

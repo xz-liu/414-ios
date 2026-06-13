@@ -242,7 +242,7 @@ struct FourFourteenTableView: View {
                 .frame(maxWidth: 560)
             handArea
         }
-        .frame(height: 138)
+        .frame(height: bottomRowHeight)
     }
 
     private var handArea: some View {
@@ -256,7 +256,7 @@ struct FourFourteenTableView: View {
             } onSelectCards: { cards in
                 model.select(cards)
             }
-            .frame(height: 82)
+            .frame(height: handSpreadHeight)
 
             HStack(spacing: 7) {
                 Text("\(model.visibleCardCount(for: 0))张")
@@ -295,6 +295,14 @@ struct FourFourteenTableView: View {
         }
         .buttonStyle(.plain)
         .disabled(!model.canSelectRocket414)
+    }
+
+    private var handSpreadHeight: CGFloat {
+        model.visibleCardCount(for: 0) > 22 ? 104 : 82
+    }
+
+    private var bottomRowHeight: CGFloat {
+        model.visibleCardCount(for: 0) > 22 ? 164 : 138
     }
 
     private var controls: some View {

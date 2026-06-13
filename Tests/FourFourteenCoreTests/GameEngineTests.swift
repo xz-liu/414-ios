@@ -717,6 +717,154 @@ struct GameEngineTests {
         }
     }
 
+    @Test("multi-deck AI spends abundant control before the one-card cliff")
+    func multiDeckAIUsesAbundantControlEarlier() {
+        let state = GameState(
+            deckCount: 2,
+            players: Self.players,
+            hands: [
+                [
+                    card(.three, .hearts, deck: 1),
+                    card(.four, .hearts, deck: 1),
+                    card(.five, .hearts, deck: 1),
+                    card(.six, .hearts, deck: 1),
+                    card(.seven, .hearts, deck: 1),
+                    card(.eight, .hearts, deck: 1)
+                ],
+                [
+                    card(.two, .hearts),
+                    card(.two, .spades, deck: 1),
+                    card(.smallJoker, nil),
+                    card(.bigJoker, nil),
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .clubs),
+                    card(.four, .hearts),
+                    card(.four, .diamonds),
+                    card(.four, .clubs),
+                    card(.four, .spades),
+                    card(.nine, .clubs),
+                    card(.ten, .clubs),
+                    card(.jack, .clubs)
+                ],
+                [
+                    card(.five, .clubs, deck: 1),
+                    card(.six, .clubs, deck: 1),
+                    card(.seven, .clubs, deck: 1),
+                    card(.eight, .clubs, deck: 1),
+                    card(.nine, .clubs, deck: 1),
+                    card(.ten, .clubs, deck: 1),
+                    card(.jack, .clubs, deck: 1),
+                    card(.queen, .clubs, deck: 1)
+                ],
+                [
+                    card(.five, .diamonds, deck: 1),
+                    card(.six, .diamonds, deck: 1),
+                    card(.seven, .diamonds, deck: 1),
+                    card(.eight, .diamonds, deck: 1),
+                    card(.nine, .diamonds, deck: 1),
+                    card(.ten, .diamonds, deck: 1),
+                    card(.jack, .diamonds, deck: 1),
+                    card(.queen, .diamonds, deck: 1)
+                ]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(
+                    kind: .single,
+                    cards: [card(.king, .clubs)],
+                    primaryRank: .king
+                ),
+                kind: .normal,
+                message: "Human出单张"
+            ),
+            cardsPlayedCount: [12, 10, 8, 8]
+        )
+
+        let ai = AIPlayer()
+        let action = ai.chooseAction(state: state, for: 1)
+        #expect(ai.legalActions(from: state, for: 1).contains(action))
+        #expect(action != .pass)
+    }
+
+    @Test("three-deck AI treats three-card bombs as lower-cost pressure")
+    func threeDeckAIDoesNotHoardCommonThreeCardBombs() {
+        let state = GameState(
+            deckCount: 3,
+            players: Self.players,
+            hands: [
+                [
+                    card(.four, .hearts, deck: 2),
+                    card(.five, .hearts, deck: 2),
+                    card(.six, .hearts, deck: 2),
+                    card(.seven, .hearts, deck: 2),
+                    card(.eight, .hearts, deck: 2),
+                    card(.nine, .hearts, deck: 2),
+                    card(.ten, .hearts, deck: 2),
+                    card(.jack, .hearts, deck: 2)
+                ],
+                [
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .clubs),
+                    card(.four, .hearts),
+                    card(.four, .diamonds),
+                    card(.four, .clubs),
+                    card(.five, .hearts),
+                    card(.five, .diamonds),
+                    card(.five, .clubs),
+                    card(.six, .clubs),
+                    card(.seven, .clubs),
+                    card(.eight, .clubs),
+                    card(.nine, .clubs),
+                    card(.ten, .clubs)
+                ],
+                [
+                    card(.six, .clubs, deck: 2),
+                    card(.seven, .clubs, deck: 2),
+                    card(.eight, .clubs, deck: 2),
+                    card(.nine, .clubs, deck: 2),
+                    card(.ten, .clubs, deck: 2),
+                    card(.jack, .clubs, deck: 2),
+                    card(.queen, .clubs, deck: 2),
+                    card(.king, .clubs, deck: 2),
+                    card(.ace, .clubs, deck: 2)
+                ],
+                [
+                    card(.six, .diamonds, deck: 2),
+                    card(.seven, .diamonds, deck: 2),
+                    card(.eight, .diamonds, deck: 2),
+                    card(.nine, .diamonds, deck: 2),
+                    card(.ten, .diamonds, deck: 2),
+                    card(.jack, .diamonds, deck: 2),
+                    card(.queen, .diamonds, deck: 2),
+                    card(.king, .diamonds, deck: 2),
+                    card(.ace, .diamonds, deck: 2)
+                ]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(
+                    kind: .pair,
+                    cards: [card(.ace, .hearts, deck: 2), card(.ace, .spades, deck: 2)],
+                    primaryRank: .ace
+                ),
+                kind: .normal,
+                message: "Human出对子"
+            ),
+            cardsPlayedCount: [18, 14, 12, 12]
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        let combination = RulesEngine.classify(action.cards)
+        #expect(combination?.kind == .sameRankBomb)
+        #expect(combination?.sameRankCount == 3)
+    }
+
     @Test("AI chooses legal follow actions promptly for multi deck hands")
     func aiChoosesPromptlyForMultiDeckFollowHands() throws {
         let ai = AIPlayer()

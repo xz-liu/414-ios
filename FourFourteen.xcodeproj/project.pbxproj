@@ -30,6 +30,12 @@
 		101000000000000000000015 /* DouDizhuHintEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000016 /* DouDizhuHintEngine.swift */; };
 		101000000000000000000016 /* DouDizhuViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000017 /* DouDizhuViewModel.swift */; };
 		101000000000000000000017 /* DouDizhuTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000018 /* DouDizhuTableView.swift */; };
+		101000000000000000000018 /* RunFastCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000019 /* RunFastCore.swift */; };
+		101000000000000000000019 /* GuanDanCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001A /* GuanDanCore.swift */; };
+		10100000000000000000001A /* RunFastViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001B /* RunFastViewModel.swift */; };
+		10100000000000000000001B /* RunFastTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001C /* RunFastTableView.swift */; };
+		10100000000000000000001C /* GuanDanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001D /* GuanDanViewModel.swift */; };
+		10100000000000000000001D /* GuanDanTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001E /* GuanDanTableView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +63,12 @@
 		102000000000000000000016 /* DouDizhuHintEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouDizhuHintEngine.swift; sourceTree = "<group>"; };
 		102000000000000000000017 /* DouDizhuViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouDizhuViewModel.swift; sourceTree = "<group>"; };
 		102000000000000000000018 /* DouDizhuTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouDizhuTableView.swift; sourceTree = "<group>"; };
+		102000000000000000000019 /* RunFastCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunFastCore.swift; sourceTree = "<group>"; };
+		10200000000000000000001A /* GuanDanCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuanDanCore.swift; sourceTree = "<group>"; };
+		10200000000000000000001B /* RunFastViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunFastViewModel.swift; sourceTree = "<group>"; };
+		10200000000000000000001C /* RunFastTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunFastTableView.swift; sourceTree = "<group>"; };
+		10200000000000000000001D /* GuanDanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuanDanViewModel.swift; sourceTree = "<group>"; };
+		10200000000000000000001E /* GuanDanTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuanDanTableView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,8 +108,12 @@
 				102000000000000000000002 /* ContentView.swift */,
 				10200000000000000000000F /* FourFourteenTableView.swift */,
 				102000000000000000000018 /* DouDizhuTableView.swift */,
+				10200000000000000000001C /* RunFastTableView.swift */,
+				10200000000000000000001E /* GuanDanTableView.swift */,
 				102000000000000000000003 /* GameViewModel.swift */,
 				102000000000000000000017 /* DouDizhuViewModel.swift */,
+				10200000000000000000001B /* RunFastViewModel.swift */,
+				10200000000000000000001D /* GuanDanViewModel.swift */,
 				10200000000000000000000C /* AudioController.swift */,
 				10200000000000000000000E /* Assets.xcassets */,
 			);
@@ -119,6 +135,8 @@
 				102000000000000000000014 /* DouDizhuGameEngine.swift */,
 				102000000000000000000015 /* DouDizhuAIPlayer.swift */,
 				102000000000000000000016 /* DouDizhuHintEngine.swift */,
+				102000000000000000000019 /* RunFastCore.swift */,
+				10200000000000000000001A /* GuanDanCore.swift */,
 			);
 			path = FourFourteenCore;
 			sourceTree = "<group>";
@@ -214,8 +232,12 @@
 				101000000000000000000002 /* ContentView.swift in Sources */,
 				10100000000000000000000E /* FourFourteenTableView.swift in Sources */,
 				101000000000000000000017 /* DouDizhuTableView.swift in Sources */,
+				10100000000000000000001B /* RunFastTableView.swift in Sources */,
+				10100000000000000000001D /* GuanDanTableView.swift in Sources */,
 				101000000000000000000003 /* GameViewModel.swift in Sources */,
 				101000000000000000000016 /* DouDizhuViewModel.swift in Sources */,
+				10100000000000000000001A /* RunFastViewModel.swift in Sources */,
+				10100000000000000000001C /* GuanDanViewModel.swift in Sources */,
 				10100000000000000000000B /* AudioController.swift in Sources */,
 				10100000000000000000000F /* CardTableBackground.swift in Sources */,
 				101000000000000000000010 /* CardViews.swift in Sources */,
@@ -231,6 +253,8 @@
 				101000000000000000000013 /* DouDizhuGameEngine.swift in Sources */,
 				101000000000000000000014 /* DouDizhuAIPlayer.swift in Sources */,
 				101000000000000000000015 /* DouDizhuHintEngine.swift in Sources */,
+				101000000000000000000018 /* RunFastCore.swift in Sources */,
+				101000000000000000000019 /* GuanDanCore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

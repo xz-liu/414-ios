@@ -52,68 +52,140 @@ struct HandSpreadView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let metrics = handMetrics(width: proxy.size.width, count: cards.count)
+            let layout = handLayout(
+                width: proxy.size.width,
+                height: proxy.size.height,
+                count: cards.count
+            )
             let selectedIDs = Set(selectedCards.map(\.id))
             let markedIDs = Set(markedCards.map(\.id))
-            HStack(spacing: metrics.spacing) {
-                ForEach(cards) { card in
-                    PlayingCardView(
-                        card: card,
-                        selected: selectedIDs.contains(card.id),
-                        marked: markedIDs.contains(card.id),
-                        compact: false,
-                        width: metrics.cardWidth,
-                        height: metrics.cardHeight
-                    )
-                    .equatable()
+
+            ZStack(alignment: .topLeading) {
+                ForEach(layout.rows.indices, id: \.self) { rowIndex in
+                    let row = layout.rows[rowIndex]
+                    HStack(spacing: row.spacing) {
+                        ForEach(row.startIndex..<row.endIndex, id: \.self) { index in
+                            let card = cards[index]
+                            PlayingCardView(
+                                card: card,
+                                selected: selectedIDs.contains(card.id),
+                                marked: markedIDs.contains(card.id),
+                                compact: false,
+                                width: layout.cardWidth,
+                                height: layout.cardHeight
+                            )
+                            .equatable()
+                        }
+                    }
+                    .frame(width: proxy.size.width, height: layout.cardHeight, alignment: .center)
+                    .position(x: proxy.size.width / 2, y: row.y + layout.cardHeight / 2)
+                    .zIndex(Double(rowIndex))
                 }
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         handleGestureChange(
                             value,
-                            width: proxy.size.width,
-                            metrics: metrics
+                            layout: layout
                         )
                     }
                     .onEnded { value in
                         handleGestureEnd(
                             value,
-                            width: proxy.size.width,
-                            metrics: metrics
+                            layout: layout
                         )
                     }
             )
         }
     }
 
-    private func handMetrics(width: CGFloat, count: Int) -> (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat) {
+    private struct HandLayout {
+        let width: CGFloat
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        let rows: [HandRowLayout]
+    }
+
+    private struct HandRowLayout {
+        let startIndex: Int
+        let count: Int
+        let y: CGFloat
+        let spacing: CGFloat
+
+        var endIndex: Int {
+            startIndex + count
+        }
+    }
+
+    private func handLayout(width: CGFloat, height: CGFloat, count: Int) -> HandLayout {
         guard count > 0 else {
-            return (50, 72, 0)
+            return HandLayout(width: width, cardWidth: 50, cardHeight: 72, rows: [])
         }
 
-        let idealWidth: CGFloat = 50
-        let minimumWidth: CGFloat = 30
-        let scaledWidth = width / CGFloat(count) * 2.1
+        let rowCount = count > 22 ? 2 : 1
+        let firstRowCount = rowCount == 1 ? count : Int(ceil(Double(count) / 2.0))
+        let secondRowCount = max(0, count - firstRowCount)
+        let maxRowCount = max(firstRowCount, secondRowCount, 1)
+        let idealWidth: CGFloat = rowCount == 1 ? 50 : 46
+        let minimumWidth: CGFloat = rowCount == 1 ? 30 : 28
+        let widthScale: CGFloat = rowCount == 1 ? 2.1 : 1.95
+        let scaledWidth = width / CGFloat(maxRowCount) * widthScale
         let cardWidth = min(idealWidth, max(minimumWidth, scaledWidth))
-        let cardHeight = cardWidth * 1.44
+        let cardHeight = cardWidth * (rowCount == 1 ? 1.44 : 1.36)
 
-        guard count > 1 else {
-            return (cardWidth, cardHeight, 0)
+        func spacing(for rowCardCount: Int) -> CGFloat {
+            guard rowCardCount > 1 else { return 0 }
+            let visibleStep = (width - cardWidth) / CGFloat(rowCardCount - 1)
+            return min(3, max(rowCount == 1 ? -24 : -18, visibleStep - cardWidth))
         }
 
-        let visibleStep = (width - cardWidth) / CGFloat(count - 1)
-        let spacing = min(3, visibleStep - cardWidth)
-        return (cardWidth, cardHeight, spacing)
+        if rowCount == 1 {
+            let y = max(0, height - cardHeight)
+            return HandLayout(
+                width: width,
+                cardWidth: cardWidth,
+                cardHeight: cardHeight,
+                rows: [
+                    HandRowLayout(
+                        startIndex: 0,
+                        count: count,
+                        y: y,
+                        spacing: spacing(for: count)
+                    )
+                ]
+            )
+        }
+
+        let lowerY = max(0, height - cardHeight)
+        let rowStep = min(cardHeight + 4, max(cardHeight * 0.56, lowerY))
+        let upperY = max(0, lowerY - rowStep)
+        return HandLayout(
+            width: width,
+            cardWidth: cardWidth,
+            cardHeight: cardHeight,
+            rows: [
+                HandRowLayout(
+                    startIndex: 0,
+                    count: firstRowCount,
+                    y: upperY,
+                    spacing: spacing(for: firstRowCount)
+                ),
+                HandRowLayout(
+                    startIndex: firstRowCount,
+                    count: secondRowCount,
+                    y: lowerY,
+                    spacing: spacing(for: secondRowCount)
+                )
+            ].filter { $0.count > 0 }
+        )
     }
 
     private func handleGestureChange(
         _ value: DragGesture.Value,
-        width: CGFloat,
-        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+        layout: HandLayout
     ) {
         if gestureStart == nil {
             gestureStart = value.startLocation
@@ -126,7 +198,7 @@ struct HandSpreadView: View {
         }
 
         guard isSwipeSelecting,
-              let index = cardIndex(at: value.location, width: width, metrics: metrics)
+              let index = cardIndex(at: value.location, layout: layout)
         else { return }
         guard lastSwipeIndex != index || swipeSelectedIDs.isEmpty else { return }
 
@@ -135,8 +207,7 @@ struct HandSpreadView: View {
 
     private func handleGestureEnd(
         _ value: DragGesture.Value,
-        width: CGFloat,
-        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+        layout: HandLayout
     ) {
         defer {
             gestureStart = nil
@@ -146,7 +217,7 @@ struct HandSpreadView: View {
         }
 
         guard !isSwipeSelecting,
-              let card = card(at: value.location, width: width, metrics: metrics)
+              let card = card(at: value.location, layout: layout)
         else { return }
 
         onTap(card)
@@ -154,24 +225,33 @@ struct HandSpreadView: View {
 
     private func card(
         at location: CGPoint,
-        width: CGFloat,
-        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+        layout: HandLayout
     ) -> Card? {
-        guard let index = cardIndex(at: location, width: width, metrics: metrics) else { return nil }
+        guard let index = cardIndex(at: location, layout: layout) else { return nil }
         return cards[index]
     }
 
     private func cardIndex(
         at location: CGPoint,
-        width: CGFloat,
-        metrics: (cardWidth: CGFloat, cardHeight: CGFloat, spacing: CGFloat)
+        layout: HandLayout
     ) -> Int? {
-        guard !cards.isEmpty else { return nil }
-        let step = max(1, metrics.cardWidth + metrics.spacing)
-        let totalWidth = metrics.cardWidth + CGFloat(max(0, cards.count - 1)) * step
-        let leftInset = max(0, (width - totalWidth) / 2)
+        guard !cards.isEmpty, !layout.rows.isEmpty else { return nil }
+
+        let row = layout.rows
+            .filter { location.y >= $0.y - 16 && location.y <= $0.y + layout.cardHeight + 16 }
+            .min { first, second in
+                abs(location.y - (first.y + layout.cardHeight / 2)) < abs(location.y - (second.y + layout.cardHeight / 2))
+            } ?? layout.rows.min { first, second in
+                abs(location.y - (first.y + layout.cardHeight / 2)) < abs(location.y - (second.y + layout.cardHeight / 2))
+            }
+
+        guard let row, row.count > 0 else { return nil }
+        let step = max(1, layout.cardWidth + row.spacing)
+        let totalWidth = layout.cardWidth + CGFloat(max(0, row.count - 1)) * step
+        let leftInset = max(0, (layout.width - totalWidth) / 2)
         let localX = min(max(location.x - leftInset, 0), totalWidth)
-        return min(cards.count - 1, max(0, Int(localX / step)))
+        let rowIndex = min(row.count - 1, max(0, Int(localX / step)))
+        return min(cards.count - 1, row.startIndex + rowIndex)
     }
 
     private func selectRange(endingAt index: Int) {
