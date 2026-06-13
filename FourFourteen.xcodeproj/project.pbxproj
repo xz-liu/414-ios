@@ -20,6 +20,7 @@
 		10100000000000000000000B /* AudioController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000000C /* AudioController.swift */; };
 		10100000000000000000000C /* audio in Resources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000000D /* audio */; };
 		10100000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000000E /* Assets.xcassets */; };
+		101000000000000000000020 /* effects in Resources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000021 /* effects */; };
 		10100000000000000000000E /* FourFourteenTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000000F /* FourFourteenTableView.swift */; };
 		10100000000000000000000F /* CardTableBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000010 /* CardTableBackground.swift */; };
 		101000000000000000000010 /* CardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000011 /* CardViews.swift */; };
@@ -36,6 +37,8 @@
 		10100000000000000000001B /* RunFastTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001C /* RunFastTableView.swift */; };
 		10100000000000000000001C /* GuanDanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001D /* GuanDanViewModel.swift */; };
 		10100000000000000000001D /* GuanDanTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001E /* GuanDanTableView.swift */; };
+		10100000000000000000001E /* CardGameEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001F /* CardGameEffect.swift */; };
+		10100000000000000000001F /* TableEffectOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000020 /* TableEffectOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +55,7 @@
 		10200000000000000000000B /* FourFourteen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FourFourteen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		10200000000000000000000C /* AudioController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioController.swift; sourceTree = "<group>"; };
 		10200000000000000000000D /* audio */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets/audio; sourceTree = "<group>"; };
+		102000000000000000000021 /* effects */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets/effects; sourceTree = "<group>"; };
 		10200000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10200000000000000000000F /* FourFourteenTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FourFourteenTableView.swift; sourceTree = "<group>"; };
 		102000000000000000000010 /* CardTableBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardTableBackground.swift; sourceTree = "<group>"; };
@@ -69,6 +73,8 @@
 		10200000000000000000001C /* RunFastTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunFastTableView.swift; sourceTree = "<group>"; };
 		10200000000000000000001D /* GuanDanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuanDanViewModel.swift; sourceTree = "<group>"; };
 		10200000000000000000001E /* GuanDanTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuanDanTableView.swift; sourceTree = "<group>"; };
+		10200000000000000000001F /* CardGameEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardGameEffect.swift; sourceTree = "<group>"; };
+		102000000000000000000020 /* TableEffectOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableEffectOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,6 +93,7 @@
 			children = (
 				104000000000000000000002 /* Sources */,
 				10200000000000000000000D /* audio */,
+				102000000000000000000021 /* effects */,
 				104000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -130,6 +137,7 @@
 				102000000000000000000008 /* GameEngine.swift */,
 				102000000000000000000009 /* AIPlayer.swift */,
 				10200000000000000000000A /* HintEngine.swift */,
+				10200000000000000000001F /* CardGameEffect.swift */,
 				102000000000000000000012 /* DouDizhuModels.swift */,
 				102000000000000000000013 /* DouDizhuRulesEngine.swift */,
 				102000000000000000000014 /* DouDizhuGameEngine.swift */,
@@ -154,6 +162,7 @@
 			children = (
 				102000000000000000000010 /* CardTableBackground.swift */,
 				102000000000000000000011 /* CardViews.swift */,
+				102000000000000000000020 /* TableEffectOverlay.swift */,
 			);
 			path = CardGameUI;
 			sourceTree = "<group>";
@@ -218,6 +227,7 @@
 			files = (
 				10100000000000000000000C /* audio in Resources */,
 				10100000000000000000000D /* Assets.xcassets in Resources */,
+				101000000000000000000020 /* effects in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -241,6 +251,7 @@
 				10100000000000000000000B /* AudioController.swift in Sources */,
 				10100000000000000000000F /* CardTableBackground.swift in Sources */,
 				101000000000000000000010 /* CardViews.swift in Sources */,
+				10100000000000000000001F /* TableEffectOverlay.swift in Sources */,
 				101000000000000000000004 /* Card.swift in Sources */,
 				101000000000000000000005 /* Combination.swift in Sources */,
 				101000000000000000000006 /* RulesEngine.swift in Sources */,
@@ -248,6 +259,7 @@
 				101000000000000000000008 /* GameEngine.swift in Sources */,
 				101000000000000000000009 /* AIPlayer.swift in Sources */,
 				10100000000000000000000A /* HintEngine.swift in Sources */,
+				10100000000000000000001E /* CardGameEffect.swift in Sources */,
 				101000000000000000000011 /* DouDizhuModels.swift in Sources */,
 				101000000000000000000012 /* DouDizhuRulesEngine.swift in Sources */,
 				101000000000000000000013 /* DouDizhuGameEngine.swift in Sources */,

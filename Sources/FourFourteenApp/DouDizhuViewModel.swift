@@ -6,6 +6,7 @@ final class DouDizhuViewModel: ObservableObject {
     @Published var selectedCards: Set<Card> = []
     @Published var notice: String = ""
     @Published var phase: GamePhase = .waiting
+    @Published var tableEffect: CardGameEffectDescriptor?
     @Published var visibleHandCounts: [Int] = [0, 0, 0]
     @Published var soundEnabled = true {
         didSet {
@@ -109,6 +110,7 @@ final class DouDizhuViewModel: ObservableObject {
         guard phase != .dealing else { return }
         selectedCards.removeAll()
         notice = ""
+        tableEffect = nil
         engine = DouDizhuGameEngine()
         visibleHandCounts = [0, 0, 0]
         phase = .dealing
@@ -261,6 +263,7 @@ private extension DouDizhuViewModel {
             try engine.applyPlay(action)
             selectedCards.removeAll()
             notice = ""
+            showEffectFromLatestEvent()
             playSoundForLatestEvent()
             advanceAIIfNeeded()
         } catch {
@@ -289,7 +292,11 @@ private extension DouDizhuViewModel {
                     case .playing:
                         let action = DouDizhuAIPlayer().chooseAction(state: engine.state, for: playerIndex)
                         try engine.applyPlay(action)
+                        let effect = showEffectFromLatestEvent()
                         playSoundForLatestEvent()
+                        try? await Task.sleep(nanoseconds: pauseAfterLatestEvent(effect: effect))
+                        notice = ""
+                        continue
                     case .noLandlord, .gameOver:
                         break
                     }
@@ -318,6 +325,29 @@ private extension DouDizhuViewModel {
         case .bid, .landlord, .system:
             audio.play(.tap)
         }
+    }
+
+    @discardableResult
+    func showEffectFromLatestEvent() -> CardGameEffectDescriptor? {
+        guard let record = engine.state.eventLog.last,
+              let effect = CardGameEffectMapper.effect(for: record)
+        else { return nil }
+        tableEffect = effect
+        let effectID = effect.id
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: effect.intensity.durationNanoseconds)
+            if tableEffect?.id == effectID {
+                tableEffect = nil
+            }
+        }
+        return effect
+    }
+
+    func pauseAfterLatestEvent(effect: CardGameEffectDescriptor?) -> UInt64 {
+        let base: UInt64 = 750_000_000
+        guard let effect else { return base }
+        let extra: UInt64 = effect.intensity.isMajor ? 200_000_000 : 120_000_000
+        return max(base, effect.intensity.durationNanoseconds + extra)
     }
 
     func message(for error: Error) -> String {

@@ -108,6 +108,9 @@ struct GuanDanTableView: View {
                     .position(x: width * 0.72, y: height * 0.46)
                 playSlot(index: 0, width: min(330, width * 0.52))
                     .position(x: width * 0.50, y: max(height - 42, height * 0.78))
+
+                TableEffectOverlay(effect: model.tableEffect, seatCount: 4)
+                    .zIndex(5)
             }
         }
     }

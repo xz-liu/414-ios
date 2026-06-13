@@ -7,6 +7,16 @@ private func c(_ rank: Rank, _ suit: Suit? = .hearts, deck: Int = 0) -> Card {
 
 @Suite("RulesEngine")
 struct RulesEngineTests {
+    @Test("renders big joker as red and small joker as black")
+    func jokerColorsFollowTableConvention() {
+        #expect(c(.bigJoker, nil).isRed)
+        #expect(!c(.smallJoker, nil).isRed)
+        #expect(c(.ace, .hearts).isRed)
+        #expect(c(.ace, .diamonds).isRed)
+        #expect(!c(.ace, .clubs).isRed)
+        #expect(!c(.ace, .spades).isRed)
+    }
+
     @Test("recognizes 4A4 as the top rocket")
     func recognizesRocket414() throws {
         let combo = try #require(RulesEngine.classify([
@@ -222,5 +232,61 @@ struct RulesEngineTests {
         let combination = try #require(RulesEngine.classify(hint.cards))
         #expect(combination.kind == .singleRun)
         #expect(Set(hint.cards).isSubset(of: Set(hand)))
+    }
+
+    @Test("hint uses lower sufficient bomb instead of four twos")
+    func hintPrefersLowerBombOverFourTwos() throws {
+        let players = [
+            GamePlayer(name: "Human", isHuman: true),
+            GamePlayer(name: "AI1", isHuman: false),
+            GamePlayer(name: "AI2", isHuman: false),
+            GamePlayer(name: "AI3", isHuman: false)
+        ]
+        let sixBomb = [
+            c(.six, .diamonds, deck: 0),
+            c(.six, .clubs, deck: 0),
+            c(.six, .hearts, deck: 0),
+            c(.six, .spades, deck: 0)
+        ]
+        let twoBomb = [
+            c(.two, .diamonds, deck: 0),
+            c(.two, .clubs, deck: 0),
+            c(.two, .hearts, deck: 0),
+            c(.two, .spades, deck: 0)
+        ]
+        let state = GameState(
+            deckCount: 2,
+            players: players,
+            hands: [
+                sixBomb + twoBomb + [
+                    c(.three, .hearts, deck: 0),
+                    c(.four, .hearts, deck: 0),
+                    c(.five, .hearts, deck: 0)
+                ],
+                [],
+                [],
+                []
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 0),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 1,
+                playerName: "AI1",
+                combination: Combination(
+                    kind: .sameRankBomb,
+                    cards: [
+                        c(.two, .diamonds, deck: 1),
+                        c(.two, .clubs, deck: 1),
+                        c(.two, .hearts, deck: 1)
+                    ],
+                    primaryRank: .two,
+                    sameRankCount: 3
+                ),
+                kind: .normal,
+                message: "AI1出炸"
+            )
+        )
+
+        let hint = try #require(HintEngine.bestAction(state: state, for: 0))
+        #expect(Set(hint.cards) == Set(sixBomb))
     }
 }

@@ -112,7 +112,7 @@ public struct Card: Identifiable, Hashable, Codable, Sendable, Comparable {
     }
 
     public var isRed: Bool {
-        suit == .diamonds || suit == .hearts || rank == .smallJoker
+        suit == .diamonds || suit == .hearts || rank == .bigJoker
     }
 
     public var isHeartThree: Bool {

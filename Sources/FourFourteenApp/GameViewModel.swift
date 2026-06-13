@@ -28,6 +28,7 @@ final class GameViewModel: ObservableObject {
     @Published var selectedCards: Set<Card> = []
     @Published var notice: String = ""
     @Published var actionBanner: ActionBanner?
+    @Published var tableEffect: CardGameEffectDescriptor?
     @Published var phase: GamePhase = .waiting
     @Published var visibleHandCounts: [Int] = [0, 0, 0, 0]
     @Published var tableRecords: [PlayRecord?] = Array(repeating: nil, count: 4)
@@ -122,6 +123,7 @@ final class GameViewModel: ObservableObject {
         selectedCards.removeAll()
         notice = ""
         actionBanner = nil
+        tableEffect = nil
         audio.play(.shuffle)
         engine = GameEngine(deckCount: deckCount)
         tableRecords = Array(repeating: nil, count: engine.state.players.count)
@@ -354,8 +356,12 @@ private extension GameViewModel {
             notice = ""
             if engine.state.eventLog.count > eventCountBefore {
                 updateTableRecords(fromEventIndex: eventCountBefore)
+                let effect = showEffectFromLatestEvent()
                 showBannerFromLatestEvent()
                 playSoundForLatestEvent()
+                if effect?.intensity.isMajor == true {
+                    clearBanner()
+                }
             }
             objectWillChange.send()
             advanceAIIfNeeded()
@@ -398,13 +404,20 @@ private extension GameViewModel {
                         clearTableRecords()
                     }
                     notice = ""
+                    let effect: CardGameEffectDescriptor?
                     if engine.state.eventLog.count > eventCountBefore {
                         updateTableRecords(fromEventIndex: eventCountBefore)
+                        effect = showEffectFromLatestEvent()
                         showBannerFromLatestEvent(autoClear: false)
                         playSoundForLatestEvent()
+                        if effect?.intensity.isMajor == true {
+                            clearBanner()
+                        }
+                    } else {
+                        effect = nil
                     }
                     objectWillChange.send()
-                    let pause = latestEventIsReaction ? 1_850_000_000 : 1_250_000_000
+                    let pause = pauseAfterLatestEvent(effect: effect)
                     try? await Task.sleep(nanoseconds: UInt64(pause))
                 } catch {
                     notice = message(for: error)
@@ -432,8 +445,28 @@ private extension GameViewModel {
         }
     }
 
+    @discardableResult
+    func showEffectFromLatestEvent() -> CardGameEffectDescriptor? {
+        guard let record = engine.state.eventLog.last,
+              let effect = CardGameEffectMapper.effect(for: record)
+        else { return nil }
+        tableEffect = effect
+        let effectID = effect.id
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: effect.intensity.durationNanoseconds)
+            if tableEffect?.id == effectID {
+                tableEffect = nil
+            }
+        }
+        return effect
+    }
+
     func clearBanner() {
         actionBanner = nil
+    }
+
+    func clearEffect() {
+        tableEffect = nil
     }
 
     func updateTableRecords(fromEventIndex startIndex: Int) {
@@ -469,6 +502,9 @@ private extension GameViewModel {
         switch record.kind {
         case .normal:
             guard let combination = record.combination else { return nil }
+            if CardGameEffectMapper.effect(for: record)?.intensity.isMajor == true {
+                return nil
+            }
             return ActionBanner(
                 text: combination.displayName,
                 subtitle: record.playerName,
@@ -494,6 +530,13 @@ private extension GameViewModel {
     var latestEventIsReaction: Bool {
         guard let kind = engine.state.eventLog.last?.kind else { return false }
         return kind == .cha || kind == .gou
+    }
+
+    func pauseAfterLatestEvent(effect: CardGameEffectDescriptor?) -> UInt64 {
+        let base: UInt64 = latestEventIsReaction ? 1_850_000_000 : 1_250_000_000
+        guard let effect else { return base }
+        let extra: UInt64 = effect.intensity.isMajor ? 200_000_000 : 120_000_000
+        return max(base, effect.intensity.durationNanoseconds + extra)
     }
 
     func playSoundForLatestEvent() {

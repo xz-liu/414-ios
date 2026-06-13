@@ -633,6 +633,14 @@ private struct AIEvaluator {
             }
         }
 
+        if state.prompt.kind == .follow,
+           let previous = state.lastPlayableRecord?.combination,
+           previous.isBombLike,
+           combination.isBombLike,
+           hasLowerSufficientControlAnswer(than: combination, previous: previous) {
+            penalty += 2_400 + controlSpendScore(combination) / 18
+        }
+
         if state.prompt.kind == .lead {
             if combination.kind == .single && action.cards.contains(where: isControlCard) {
                 penalty += 620
@@ -640,6 +648,7 @@ private struct AIEvaluator {
             if combination.isBombLike {
                 penalty += 680
             }
+            penalty += premiumControlLeadReservePenalty(action, combination: combination)
         }
 
         let profilePenaltyPercent = controlProfile.overkillPenaltyPercent(for: combination)
@@ -651,6 +660,55 @@ private struct AIEvaluator {
             unnecessaryControlPenalty(action, combination: combination)
 
         return responsibilityDiscounted(scaledPenalty, maxDiscount: 86) + unnecessaryPenalty
+    }
+
+    func premiumControlLeadReservePenalty(_ action: PlayerAction, combination: Combination) -> Int {
+        guard action.cards.count < hand.count else { return 0 }
+
+        let base: Int
+        switch combination.kind {
+        case .rocket414:
+            base = 6_800
+        case .doubleJoker:
+            base = 4_600
+        case .sameRankBomb where combination.sameRankCount >= 5:
+            base = 2_100
+        default:
+            return 0
+        }
+
+        let progressRelief = controlProfile.progressPercent * 42
+        let pressureRelief = max(tablePressure, threatContext.defenseResponsibility) * 58
+        let endgameRelief = hand.count <= 8 ? 2_600 : 0
+        return max(0, base - progressRelief - pressureRelief - endgameRelief)
+    }
+
+    func hasLowerSufficientControlAnswer(than currentCombination: Combination, previous: Combination) -> Bool {
+        let currentScore = controlSpendScore(currentCombination)
+        return actions.contains { action in
+            guard !action.cards.isEmpty,
+                  let candidate = combination(for: action),
+                  candidate.isBombLike,
+                  RulesEngine.canBeat(candidate, previous),
+                  candidate.cards != currentCombination.cards
+            else { return false }
+
+            return controlSpendScore(candidate) < currentScore
+        }
+    }
+
+    func controlSpendScore(_ combination: Combination) -> Int {
+        let cardCost = combination.cards.reduce(0) { $0 + cardResourceValue($1) }
+        switch combination.kind {
+        case .sameRankBomb:
+            return 10_000 + combination.sameRankCount * 2_200 + rankValue(combination.primaryRank) * 120 + cardCost
+        case .doubleJoker:
+            return 45_000 + cardCost
+        case .rocket414:
+            return 55_000 + cardCost
+        default:
+            return RulesEngine.combinationSortScore(combination) + cardCost
+        }
     }
 
     func unnecessaryControlPenalty(_ action: PlayerAction, combination: Combination) -> Int {

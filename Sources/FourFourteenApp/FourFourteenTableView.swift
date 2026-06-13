@@ -77,9 +77,11 @@ struct FourFourteenTableView: View {
                 .padding(.horizontal, 56)
                 .padding(.top, 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .zIndex(model.isWaiting || model.isDealing ? 4 : 0)
 
             topAI(index: 2)
                 .zIndex(2)
+                .allowsHitTesting(false)
 
             HStack {
                 sideAI(index: 1)
@@ -89,6 +91,7 @@ struct FourFourteenTableView: View {
             .padding(.horizontal, 58)
             .padding(.top, 18)
             .zIndex(2)
+            .allowsHitTesting(false)
         }
     }
 
@@ -128,6 +131,9 @@ struct FourFourteenTableView: View {
 
                 tablePlaySlot(index: 0, width: min(300, width * 0.48))
                     .position(x: width * 0.50, y: max(height - 48, height * 0.74))
+
+                TableEffectOverlay(effect: model.tableEffect, seatCount: 4)
+                    .zIndex(5)
             }
         }
     }
@@ -189,9 +195,9 @@ struct FourFourteenTableView: View {
                                 .font(.headline.weight(.black))
                                 .frame(width: 150, height: 44)
                                 .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
-                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .contentShape(Rectangle())
                         .shadow(color: Color.orange.opacity(0.82), radius: 8)
                         .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
                     } else {

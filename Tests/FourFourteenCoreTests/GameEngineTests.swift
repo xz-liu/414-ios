@@ -717,6 +717,46 @@ struct GameEngineTests {
         }
     }
 
+    @Test("three-deck AI does not open with 4A4 when ordinary lead shapes are available")
+    func threeDeckAIDoesNotOpenWithRocket414() throws {
+        let aiHand = [
+            card(.three, .hearts, deck: 1),
+            card(.four, .hearts),
+            card(.four, .diamonds),
+            card(.five, .clubs),
+            card(.six, .clubs),
+            card(.seven, .clubs),
+            card(.eight, .clubs),
+            card(.nine, .clubs),
+            card(.ten, .clubs),
+            card(.jack, .diamonds),
+            card(.queen, .diamonds),
+            card(.ace, .spades),
+            card(.two, .clubs),
+            card(.smallJoker, nil, deck: 1)
+        ]
+        let aiHandSet = Set(aiHand)
+        let filler = DeckConfig(deckCount: 3).makeDeck().filter { !aiHandSet.contains($0) }
+        let state = GameState(
+            deckCount: 3,
+            players: Self.players,
+            hands: [
+                Array(filler[0..<28]),
+                aiHand,
+                Array(filler[28..<56]),
+                Array(filler[56..<84])
+            ],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 1)
+        )
+
+        let ai = AIPlayer()
+        let action = ai.chooseAction(state: state, for: 1)
+        let combination = try #require(RulesEngine.classify(action.cards))
+
+        #expect(ai.legalActions(from: state, for: 1).contains(action))
+        #expect(combination.kind != .rocket414)
+    }
+
     @Test("multi-deck AI spends abundant control before the one-card cliff")
     func multiDeckAIUsesAbundantControlEarlier() {
         let state = GameState(

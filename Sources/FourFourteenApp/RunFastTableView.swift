@@ -97,6 +97,9 @@ struct RunFastTableView: View {
                     .position(x: width * 0.70, y: height * 0.42)
                 playSlot(index: 0, width: min(320, width * 0.52))
                     .position(x: width * 0.50, y: max(height - 42, height * 0.76))
+
+                TableEffectOverlay(effect: model.tableEffect, seatCount: 3)
+                    .zIndex(5)
             }
         }
     }
