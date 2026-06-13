@@ -5,6 +5,8 @@ import SwiftUI
 final class DouDizhuViewModel: ObservableObject {
     @Published var selectedCards: Set<Card> = []
     @Published var notice: String = ""
+    @Published var phase: GamePhase = .waiting
+    @Published var visibleHandCounts: [Int] = [0, 0, 0]
     @Published var soundEnabled = true {
         didSet {
             audio.effectsEnabled = soundEnabled
@@ -25,32 +27,47 @@ final class DouDizhuViewModel: ObservableObject {
     }
 
     var humanHand: [Card] {
-        state.hands[0]
+        switch phase {
+        case .waiting:
+            return []
+        case .dealing:
+            return Array(state.hands[0].prefix(visibleCardCount(for: 0)))
+        case .playing:
+            return state.hands[0]
+        }
     }
 
     var bottomCardsVisible: [Card] {
-        state.landlordIndex == nil ? [] : state.bottomCards
+        phase == .playing && state.landlordIndex != nil ? state.bottomCards : []
     }
 
     var isHumanTurn: Bool {
-        state.currentPlayerIndex == 0 && !state.isGameOver && state.phase != .noLandlord
+        phase == .playing && state.currentPlayerIndex == 0 && !state.isGameOver && state.phase != .noLandlord
+    }
+
+    var isWaiting: Bool {
+        phase == .waiting
+    }
+
+    var isDealing: Bool {
+        phase == .dealing
     }
 
     var canHint: Bool {
-        isHumanTurn && state.phase == .playing
+        phase == .playing && isHumanTurn && state.phase == .playing
     }
 
     var canPlay: Bool {
-        isHumanTurn && state.phase == .playing && !selectedCards.isEmpty
+        phase == .playing && isHumanTurn && state.phase == .playing && !selectedCards.isEmpty
     }
 
     var canPassPlay: Bool {
-        guard isHumanTurn, state.phase == .playing else { return false }
+        guard phase == .playing, isHumanTurn, state.phase == .playing else { return false }
         return state.lastPlay != nil && state.lastPlay?.playerIndex != 0
     }
 
     var canBid: Bool {
-        isHumanTurn && state.phase == .bidding
+        phase == .playing && isHumanTurn && state.phase == .bidding
     }
 
     var legalBidValues: [Int] {
@@ -61,6 +78,14 @@ final class DouDizhuViewModel: ObservableObject {
     }
 
     var promptText: String {
+        switch phase {
+        case .waiting:
+            return "点发牌开始"
+        case .dealing:
+            return "正在发牌..."
+        case .playing:
+            break
+        }
         switch state.phase {
         case .bidding:
             return "\(state.players[state.currentPlayerIndex].name)叫地主"
@@ -77,11 +102,19 @@ final class DouDizhuViewModel: ObservableObject {
     }
 
     func newGame() {
+        dealNewGame()
+    }
+
+    func dealNewGame() {
+        guard phase != .dealing else { return }
         selectedCards.removeAll()
         notice = ""
         engine = DouDizhuGameEngine()
+        visibleHandCounts = [0, 0, 0]
+        phase = .dealing
         audio.play(.shuffle)
-        advanceAIIfNeeded()
+        objectWillChange.send()
+        animateDeal()
     }
 
     func toggle(_ card: Card) {
@@ -140,7 +173,14 @@ final class DouDizhuViewModel: ObservableObject {
     }
 
     func visibleCardCount(for playerIndex: Int) -> Int {
-        state.hands.indices.contains(playerIndex) ? state.hands[playerIndex].count : 0
+        switch phase {
+        case .waiting:
+            return 0
+        case .dealing:
+            return visibleHandCounts.indices.contains(playerIndex) ? visibleHandCounts[playerIndex] : 0
+        case .playing:
+            return state.hands.indices.contains(playerIndex) ? state.hands[playerIndex].count : 0
+        }
     }
 
     func tableRecord(for playerIndex: Int) -> DouDizhuPlayRecord? {
@@ -148,6 +188,14 @@ final class DouDizhuViewModel: ObservableObject {
     }
 
     func statusText(for playerIndex: Int) -> String {
+        switch phase {
+        case .waiting:
+            return "待发牌"
+        case .dealing:
+            return "发牌中"
+        case .playing:
+            break
+        }
         if state.landlordIndex == playerIndex {
             return "地主"
         }
@@ -162,7 +210,39 @@ final class DouDizhuViewModel: ObservableObject {
 }
 
 private extension DouDizhuViewModel {
+    func animateDeal() {
+        notice = "正在发牌..."
+        let targetCounts = engine.state.hands.map(\.count)
+        let delay: UInt64 = 46_000_000
+
+        Task { @MainActor in
+            var remaining = targetCounts.reduce(0, +)
+            while remaining > 0 {
+                var changed = false
+                withAnimation(.easeOut(duration: 0.10)) {
+                    for playerIndex in targetCounts.indices where visibleHandCounts[playerIndex] < targetCounts[playerIndex] {
+                        visibleHandCounts[playerIndex] += 1
+                        remaining -= 1
+                        changed = true
+                    }
+                }
+                if changed {
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+            }
+
+            notice = "开始叫地主"
+            audio.play(.draw)
+            try? await Task.sleep(nanoseconds: 620_000_000)
+            phase = .playing
+            notice = ""
+            objectWillChange.send()
+            advanceAIIfNeeded()
+        }
+    }
+
     func applyBid(_ action: DouDizhuBidAction) {
+        guard phase == .playing else { return }
         do {
             try engine.applyBid(action)
             selectedCards.removeAll()
@@ -176,6 +256,7 @@ private extension DouDizhuViewModel {
     }
 
     func applyPlay(_ action: DouDizhuAction) {
+        guard phase == .playing else { return }
         do {
             try engine.applyPlay(action)
             selectedCards.removeAll()
@@ -189,7 +270,7 @@ private extension DouDizhuViewModel {
     }
 
     func advanceAIIfNeeded() {
-        guard !isAdvancingAI else { return }
+        guard phase == .playing, !isAdvancingAI else { return }
         isAdvancingAI = true
         Task { @MainActor in
             defer { isAdvancingAI = false }

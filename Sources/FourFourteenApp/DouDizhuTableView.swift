@@ -19,9 +19,6 @@ struct DouDizhuTableView: View {
                 .padding(.bottom, max(22, proxy.safeAreaInsets.bottom + 18))
             }
         }
-        .onAppear {
-            model.newGame()
-        }
     }
 
     private var topBar: some View {
@@ -46,20 +43,7 @@ struct DouDizhuTableView: View {
 
             bottomCardsView
 
-            Button {
-                model.newGame()
-            } label: {
-                Label("重发", systemImage: "arrow.clockwise")
-                    .labelStyle(.titleAndIcon)
-                    .font(.subheadline.weight(.black))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.80)
-                    .frame(width: 76, height: 34)
-                    .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
-                    .shadow(color: Color.orange.opacity(0.82), radius: 7)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            topDealButton
 
             iconButton(
                 icon: model.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
@@ -84,7 +68,12 @@ struct DouDizhuTableView: View {
             ZStack {
                 TableCenterSurface(width: width, height: height)
 
-                if model.state.phase == .gameOver {
+                if model.isWaiting || model.isDealing {
+                    preGamePanel
+                        .frame(width: min(330, width * 0.62), height: min(150, height * 0.72))
+                        .position(x: width * 0.50, y: height * 0.54)
+                        .zIndex(3)
+                } else if model.state.phase == .gameOver {
                     scoreView
                         .frame(width: min(340, width * 0.50), height: min(150, height * 0.72))
                         .position(x: width * 0.50, y: height * 0.52)
@@ -157,7 +146,18 @@ struct DouDizhuTableView: View {
 
     private var controls: some View {
         Group {
-            if model.state.phase == .bidding {
+            if model.phase != .playing {
+                HStack(spacing: 7) {
+                    actionButton(
+                        model.isDealing ? "发牌中" : "发牌",
+                        icon: model.isDealing ? "hourglass" : "play.fill",
+                        enabled: model.isWaiting,
+                        tint: Color(red: 1.00, green: 0.56, blue: 0.12)
+                    ) {
+                        model.dealNewGame()
+                    }
+                }
+            } else if model.state.phase == .bidding {
                 HStack(spacing: 7) {
                     actionButton("不叫", icon: "xmark", enabled: model.canBid, tint: Color(red: 0.34, green: 0.38, blue: 0.45)) {
                         model.passBid()
@@ -197,6 +197,53 @@ struct DouDizhuTableView: View {
             }
         }
         .frame(width: 66, height: 34)
+    }
+
+    private var preGamePanel: some View {
+        VStack(spacing: 10) {
+            Text(model.isDealing ? "正在发牌" : "准备发牌")
+                .font(.title3.weight(.black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .shadow(color: .black.opacity(0.55), radius: 7, y: 3)
+
+            HStack(spacing: 22) {
+                ForEach(0..<3, id: \.self) { index in
+                    VStack(spacing: 2) {
+                        Text(model.state.players[index].name)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.76))
+                            .lineLimit(1)
+                        Text("\(model.visibleCardCount(for: index))")
+                            .font(.title2.weight(.black))
+                            .foregroundStyle(.yellow)
+                            .shadow(color: .yellow.opacity(0.40), radius: 7)
+                    }
+                    .frame(width: 62)
+                }
+            }
+
+            if model.isWaiting {
+                Button {
+                    model.dealNewGame()
+                } label: {
+                    Label("发牌", systemImage: "play.fill")
+                        .font(.headline.weight(.black))
+                        .frame(width: 142, height: 40)
+                        .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .shadow(color: Color.orange.opacity(0.82), radius: 8)
+                .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
+            } else {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.82)
+            }
+        }
+        .padding(12)
+        .shadow(color: .black.opacity(0.58), radius: 8, y: 4)
     }
 
     private var cardBack: some View {
@@ -248,7 +295,7 @@ struct DouDizhuTableView: View {
     }
 
     private func playerPanel(index: Int) -> some View {
-        let highlighted = model.state.currentPlayerIndex == index && model.state.phase != .gameOver
+        let highlighted = model.phase == .playing && model.state.currentPlayerIndex == index && model.state.phase != .gameOver
         return VStack(spacing: 2) {
             Text(model.state.players[index].name)
                 .font(.caption2.weight(.bold))
@@ -283,6 +330,25 @@ struct DouDizhuTableView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var topDealButton: some View {
+        Button {
+            model.dealNewGame()
+        } label: {
+            Label(dealButtonTitle, systemImage: model.isWaiting ? "play.fill" : "arrow.clockwise")
+                .labelStyle(.titleAndIcon)
+                .font(.subheadline.weight(.black))
+                .lineLimit(1)
+                .minimumScaleFactor(0.80)
+                .frame(width: 78, height: 34)
+                .foregroundStyle(model.isDealing ? .white.opacity(0.40) : Color(red: 1.00, green: 0.56, blue: 0.12))
+                .shadow(color: model.isDealing ? .clear : Color.orange.opacity(0.82), radius: 7)
+                .shadow(color: .black.opacity(model.isDealing ? 0.15 : 0.34), radius: 2, y: 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isDealing)
     }
 
     private func actionButton(
@@ -325,8 +391,22 @@ struct DouDizhuTableView: View {
     }
 
     private var roleText: String {
+        guard model.phase == .playing else {
+            return "待发牌"
+        }
         guard let landlord = model.state.landlordIndex else { return "叫地主" }
         return landlord == 0 ? "你是地主" : "你是农民"
+    }
+
+    private var dealButtonTitle: String {
+        switch model.phase {
+        case .waiting:
+            return "发牌"
+        case .dealing:
+            return "发牌中"
+        case .playing:
+            return "重发"
+        }
     }
 }
 
