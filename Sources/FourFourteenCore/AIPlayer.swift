@@ -96,13 +96,13 @@ public struct AIPlayer: Sendable {
     private func candidateLimit(handCount: Int, prompt: PromptKind) -> Int {
         switch (prompt, handCount) {
         case (.lead, 40...):
-            return 28
+            return 18
         case (.follow, 40...):
-            return 36
+            return 24
         case (.lead, 20...):
-            return 30
+            return 18
         case (.follow, 20...):
-            return 40
+            return 26
         default:
             return 56
         }
@@ -843,7 +843,7 @@ private struct AIEvaluator {
     }
 
     func shouldUseFastTurnEstimate(_ cards: [Card]) -> Bool {
-        cards.count > 30 || (state.deckCount > 1 && cards.count > 18)
+        cards.count > 30 || (state.deckCount > 1 && cards.count >= 12)
     }
 
     func fastTurnEstimate(_ cards: [Card]) -> Int {
