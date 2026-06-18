@@ -136,6 +136,24 @@ final class DouDizhuViewModel: ObservableObject {
         selectedCards.formUnion(newCards)
     }
 
+    func flipSelection(_ cards: [Card]) {
+        guard isHumanTurn else { return }
+        guard !cards.isEmpty else { return }
+        for card in cards {
+            if selectedCards.contains(card) {
+                selectedCards.remove(card)
+            } else {
+                selectedCards.insert(card)
+            }
+        }
+    }
+
+    func clearSelection() {
+        guard !selectedCards.isEmpty else { return }
+        selectedCards.removeAll()
+        audio.play(.tap)
+    }
+
     func bid(_ value: Int) {
         applyBid(.bid(value))
     }
@@ -263,8 +281,8 @@ private extension DouDizhuViewModel {
             try engine.applyPlay(action)
             selectedCards.removeAll()
             notice = ""
-            showEffectFromLatestEvent()
-            playSoundForLatestEvent()
+            let effect = showEffectFromLatestEvent()
+            playSoundForLatestEvent(effect: effect)
             advanceAIIfNeeded()
         } catch {
             notice = message(for: error)
@@ -293,7 +311,7 @@ private extension DouDizhuViewModel {
                         let action = DouDizhuAIPlayer().chooseAction(state: engine.state, for: playerIndex)
                         try engine.applyPlay(action)
                         let effect = showEffectFromLatestEvent()
-                        playSoundForLatestEvent()
+                        playSoundForLatestEvent(effect: effect)
                         try? await Task.sleep(nanoseconds: pauseAfterLatestEvent(effect: effect))
                         notice = ""
                         continue
@@ -311,15 +329,11 @@ private extension DouDizhuViewModel {
         }
     }
 
-    func playSoundForLatestEvent() {
+    func playSoundForLatestEvent(effect: CardGameEffectDescriptor? = nil) {
         guard let record = engine.state.eventLog.last else { return }
         switch record.kind {
         case .play:
-            if record.combination?.isBombLike == true {
-                audio.play(.reaction)
-            } else {
-                audio.play(.playcard)
-            }
+            audio.playCard(effect: effect ?? CardGameEffectMapper.effect(for: record))
         case .pass:
             audio.play(.pass)
         case .bid, .landlord, .system:

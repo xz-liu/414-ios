@@ -108,6 +108,24 @@ final class GuanDanViewModel: ObservableObject {
         selectedCards.formUnion(newCards)
     }
 
+    func flipSelection(_ cards: [Card]) {
+        guard isHumanTurn else { return }
+        guard !cards.isEmpty else { return }
+        for card in cards {
+            if selectedCards.contains(card) {
+                selectedCards.remove(card)
+            } else {
+                selectedCards.insert(card)
+            }
+        }
+    }
+
+    func clearSelection() {
+        guard !selectedCards.isEmpty else { return }
+        selectedCards.removeAll()
+        audio.play(.tap)
+    }
+
     func playSelected() {
         apply(.play(Array(selectedCards)))
     }
@@ -214,8 +232,8 @@ private extension GuanDanViewModel {
             try engine.apply(action)
             selectedCards.removeAll()
             notice = ""
-            showEffectFromLatestEvent()
-            playSoundForLatestEvent()
+            let effect = showEffectFromLatestEvent()
+            playSoundForLatestEvent(effect: effect)
             objectWillChange.send()
             advanceAIIfNeeded()
         } catch {
@@ -245,7 +263,7 @@ private extension GuanDanViewModel {
                     try engine.apply(action)
                     notice = ""
                     let effect = showEffectFromLatestEvent()
-                    playSoundForLatestEvent()
+                    playSoundForLatestEvent(effect: effect)
                     objectWillChange.send()
                     try? await Task.sleep(nanoseconds: pauseAfterLatestEvent(effect: effect))
                 } catch {
@@ -257,15 +275,11 @@ private extension GuanDanViewModel {
         }
     }
 
-    func playSoundForLatestEvent() {
+    func playSoundForLatestEvent(effect: CardGameEffectDescriptor? = nil) {
         guard let record = engine.state.eventLog.last else { return }
         switch record.kind {
         case .play:
-            if record.combination?.isBombLike == true {
-                audio.play(.reaction)
-            } else {
-                audio.play(.playcard)
-            }
+            audio.playCard(effect: effect ?? CardGameEffectMapper.effect(for: record))
         case .pass:
             audio.play(.pass)
         case .finish, .system:

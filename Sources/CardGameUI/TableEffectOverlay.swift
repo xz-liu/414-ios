@@ -32,6 +32,15 @@ private struct TableEffectHost: View {
 
     var body: some View {
         ZStack {
+            if !reduceMotion, usesImpactBackdrop {
+                TableImpactBackdrop(
+                    effect: effect,
+                    anchorPoint: anchorPoint,
+                    canvasSize: canvasSize,
+                    phase: phase
+                )
+            }
+
             if reduceMotion {
                 ReducedMotionEffect(effect: effect)
                     .position(anchorPoint)
@@ -75,6 +84,10 @@ private struct TableEffectHost: View {
         Double(effect.intensity.durationNanoseconds) / 1_000_000_000
     }
 
+    private var usesImpactBackdrop: Bool {
+        effect.kind == .bomb || effect.kind == .mushroom || effect.kind == .rocket
+    }
+
     private var anchorPoint: CGPoint {
         let x: CGFloat
         let y: CGFloat
@@ -116,12 +129,178 @@ private struct TableEffectHost: View {
     }
 }
 
+private struct TableImpactBackdrop: View {
+    let effect: CardGameEffectDescriptor
+    let anchorPoint: CGPoint
+    let canvasSize: CGSize
+    let phase: CGFloat
+
+    var body: some View {
+        ZStack {
+            Color.white
+                .opacity(Double(flashOpacity))
+                .blendMode(.screen)
+
+            RadialGradient(
+                colors: [
+                    impactColor.opacity(0.46),
+                    impactColor.opacity(0.18),
+                    Color.black.opacity(0.30),
+                    Color.clear
+                ],
+                center: gradientCenter,
+                startRadius: 20,
+                endRadius: max(canvasSize.width, canvasSize.height) * 0.58
+            )
+            .opacity(Double(max(0, 1 - phase * 0.72)))
+            .blendMode(.screen)
+
+            Color.black
+                .opacity(Double(max(0, 0.20 - phase * 0.18)))
+
+            ForEach(0..<3, id: \.self) { index in
+                let localPhase = min(1, max(0, phase * 1.28 - CGFloat(index) * 0.16))
+                Ellipse()
+                    .stroke(
+                        impactColor.opacity(Double(max(0, 0.48 - localPhase * 0.46))),
+                        lineWidth: max(1, 7 - CGFloat(index) * 1.8)
+                    )
+                    .frame(
+                        width: 120 + localPhase * (canvasSize.width * 0.46 + CGFloat(index) * 80),
+                        height: 42 + localPhase * (canvasSize.height * 0.20 + CGFloat(index) * 22)
+                    )
+                    .position(anchorPoint)
+                    .blendMode(.screen)
+            }
+        }
+        .frame(width: canvasSize.width, height: canvasSize.height)
+    }
+
+    private var flashOpacity: CGFloat {
+        switch effect.intensity {
+        case .s:
+            return max(0, 0.48 - phase * 2.9)
+        case .a:
+            return max(0, 0.32 - phase * 2.3)
+        case .b, .c:
+            return 0
+        }
+    }
+
+    private var impactColor: Color {
+        switch effect.kind {
+        case .rocket:
+            return Color(red: 1.0, green: 0.82, blue: 0.18)
+        case .mushroom:
+            return Color(red: 1.0, green: 0.58, blue: 0.08)
+        default:
+            return Color(red: 1.0, green: 0.36, blue: 0.05)
+        }
+    }
+
+    private var gradientCenter: UnitPoint {
+        UnitPoint(
+            x: max(0, min(1, anchorPoint.x / max(1, canvasSize.width))),
+            y: max(0, min(1, anchorPoint.y / max(1, canvasSize.height)))
+        )
+    }
+}
+
+private struct ImpactRings: View {
+    let phase: CGFloat
+    let color: Color
+    let maxSize: CGFloat
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                let localPhase = min(1, max(0, phase * 1.22 - CGFloat(index) * 0.18))
+                Ellipse()
+                    .stroke(
+                        color.opacity(Double(max(0, 0.78 - localPhase * 0.84))),
+                        lineWidth: max(1.2, 6.5 - CGFloat(index) * 1.7)
+                    )
+                    .frame(
+                        width: 50 + localPhase * (maxSize + CGFloat(index) * 34),
+                        height: 24 + localPhase * (maxSize * 0.44 + CGFloat(index) * 16)
+                    )
+                    .blendMode(.screen)
+            }
+        }
+    }
+}
+
+private struct RadialBurstRays: View {
+    let phase: CGFloat
+    let color: Color
+    let count: Int
+    let radius: CGFloat
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<count, id: \.self) { index in
+                let angle = CGFloat(index) / CGFloat(max(1, count)) * .pi * 2
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.95),
+                                color.opacity(0.86),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: index.isMultiple(of: 2) ? 5 : 3, height: 34 + CGFloat(index % 4) * 7)
+                    .offset(y: -(26 + phase * radius))
+                    .rotationEffect(.radians(Double(angle)))
+                    .opacity(Double(max(0, 0.90 - phase * 1.10)))
+                    .scaleEffect(x: 0.72, y: 0.55 + phase * 1.05)
+                    .blendMode(.screen)
+            }
+        }
+    }
+}
+
 private struct BombBurstEffect: View {
     let effect: CardGameEffectDescriptor
     let phase: CGFloat
 
     var body: some View {
         ZStack {
+            ImpactRings(
+                phase: phase,
+                color: Color(red: 1.0, green: 0.46, blue: 0.08),
+                maxSize: 300
+            )
+
+            RadialBurstRays(
+                phase: phase,
+                color: Color(red: 1.0, green: 0.62, blue: 0.08),
+                count: 18,
+                radius: 114
+            )
+
+            EffectImageView(name: "flare")
+                .frame(width: 238, height: 238)
+                .scaleEffect(0.48 + phase * 1.42)
+                .opacity(Double(max(0, 0.92 - phase * 1.06)))
+                .blendMode(.screen)
+
+            SpriteSheetFrameView(
+                imageName: "explosion_big_sheet",
+                columns: 4,
+                rows: 4,
+                frameCount: 16,
+                progress: min(1, phase * 1.04)
+            )
+            .frame(width: 228, height: 228)
+            .scaleEffect(0.62 + phase * 0.56)
+            .saturation(1.25)
+            .contrast(1.10)
+            .shadow(color: .red.opacity(0.72), radius: 18)
+
             SpriteSheetFrameView(
                 imageName: "explosion_sheet",
                 columns: 10,
@@ -129,24 +308,26 @@ private struct BombBurstEffect: View {
                 frameCount: 50,
                 progress: phase
             )
-            .frame(width: 138, height: 138)
-            .scaleEffect(0.78 + phase * 0.32)
-            .shadow(color: .orange.opacity(0.82), radius: 10)
+            .frame(width: 176, height: 176)
+            .scaleEffect(0.70 + phase * 0.42)
+            .brightness(0.08)
+            .shadow(color: .orange.opacity(0.95), radius: 16)
 
             ParticleImageBurst(
                 imageName: "spark",
-                count: 12,
+                count: 26,
                 phase: phase,
-                radius: 76,
-                size: 22,
+                radius: 148,
+                size: 30,
                 tint: .orange
             )
 
             EffectLabel(effect: effect, color: .orange)
-                .offset(y: 54 - phase * 8)
-                .opacity(Double(max(0, 1 - phase * 0.15)))
+                .scaleEffect(1.24 - phase * 0.10)
+                .offset(y: 88 - phase * 16)
+                .opacity(Double(max(0, 1 - phase * 0.08)))
         }
-        .frame(width: 210, height: 150)
+        .frame(width: 360, height: 260)
     }
 }
 
@@ -156,35 +337,77 @@ private struct MushroomCloudEffect: View {
 
     var body: some View {
         ZStack {
-            SpriteSheetFrameView(
-                imageName: "explosion_sheet",
-                columns: 10,
-                rows: 5,
-                frameCount: 50,
-                progress: min(1, phase * 0.86)
+            ImpactRings(
+                phase: phase,
+                color: Color(red: 1.0, green: 0.70, blue: 0.10),
+                maxSize: 360
             )
-            .frame(width: 168, height: 168)
-            .scaleEffect(0.86 + phase * 0.42)
-            .offset(y: -22)
-            .shadow(color: .orange.opacity(0.88), radius: 14)
+            .offset(y: 44)
 
-            ForEach(0..<4, id: \.self) { index in
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.orange.opacity(0.72),
+                            Color.red.opacity(0.36),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 170
+                    )
+                )
+                .frame(width: 350, height: 120)
+                .scaleEffect(x: 0.45 + phase * 1.08, y: 0.42 + phase * 0.35)
+                .offset(y: 56)
+                .opacity(Double(max(0, 0.86 - phase * 0.48)))
+                .blendMode(.screen)
+
+            SpriteSheetFrameView(
+                imageName: "explosion_big_sheet",
+                columns: 4,
+                rows: 4,
+                frameCount: 16,
+                progress: min(1, phase * 0.96)
+            )
+            .frame(width: 250, height: 250)
+            .scaleEffect(0.74 + phase * 0.56)
+            .offset(y: -42)
+            .saturation(1.30)
+            .shadow(color: .orange.opacity(0.94), radius: 20)
+
+            ForEach(0..<7, id: \.self) { index in
                 EffectImageView(name: "smoke")
-                    .frame(width: 70 + CGFloat(index) * 12, height: 70 + CGFloat(index) * 12)
-                    .opacity(Double(max(0, 0.68 - phase * 0.26)))
-                    .scaleEffect(0.70 + phase * 0.70)
-                    .offset(x: CGFloat(index - 2) * 22, y: -44 - phase * 16 + CGFloat(index % 2) * 14)
+                    .frame(width: 78 + CGFloat(index) * 13, height: 78 + CGFloat(index) * 13)
+                    .colorMultiply(index.isMultiple(of: 2) ? .gray : .white)
+                    .opacity(Double(max(0, 0.74 - phase * 0.32)))
+                    .scaleEffect(0.54 + phase * 0.92)
+                    .offset(
+                        x: CGFloat(index - 3) * 24,
+                        y: -66 - phase * 34 + CGFloat(index % 2) * 18
+                    )
             }
 
             EffectImageView(name: "flare")
-                .frame(width: 172, height: 172)
-                .opacity(Double(max(0, 0.75 - phase * 0.42)))
-                .scaleEffect(0.5 + phase * 1.2)
+                .frame(width: 270, height: 270)
+                .opacity(Double(max(0, 0.86 - phase * 0.64)))
+                .scaleEffect(0.42 + phase * 1.52)
+                .blendMode(.screen)
+
+            ParticleImageBurst(
+                imageName: "spark",
+                count: 22,
+                phase: phase,
+                radius: 170,
+                size: 26,
+                tint: .yellow
+            )
 
             EffectLabel(effect: effect, color: .yellow)
-                .offset(y: 62)
+                .scaleEffect(1.28 - phase * 0.12)
+                .offset(y: 96)
         }
-        .frame(width: 240, height: 170)
+        .frame(width: 390, height: 290)
     }
 }
 
@@ -194,28 +417,59 @@ private struct RocketLaunchEffect: View {
 
     var body: some View {
         ZStack {
+            ImpactRings(
+                phase: phase,
+                color: Color(red: 1.0, green: 0.78, blue: 0.16),
+                maxSize: 300
+            )
+            .offset(y: 70)
+
+            ForEach(0..<9, id: \.self) { index in
+                EffectImageView(name: index.isMultiple(of: 2) ? "trace" : "spark")
+                    .frame(width: 60 - CGFloat(index % 3) * 8, height: 24)
+                    .rotationEffect(.degrees(90 + Double(index - 4) * 5))
+                    .colorMultiply(index.isMultiple(of: 2) ? .orange : .yellow)
+                    .offset(
+                        x: CGFloat(index - 4) * 13,
+                        y: 88 + phase * 64 + CGFloat(index % 2) * 12
+                    )
+                    .scaleEffect(0.62 + phase * 1.04)
+                    .opacity(Double(max(0, 0.88 - phase * 0.78)))
+                    .blendMode(.screen)
+            }
+
+            EffectImageView(name: "flare")
+                .frame(width: 212, height: 212)
+                .scaleEffect(0.36 + phase * 1.18)
+                .offset(y: 78)
+                .opacity(Double(max(0, 0.82 - phase * 0.82)))
+                .blendMode(.screen)
+
             AnimatedImageSequenceView(
                 names: ["thruster_1", "thruster_2", "thruster_3", "thruster_4"],
                 progress: phase
             )
-            .frame(width: 74, height: 62)
+            .frame(width: 104, height: 86)
             .rotationEffect(.degrees(90))
-            .scaleEffect(1.0 + phase * 1.10)
-            .offset(x: -50, y: 42 - phase * 118)
-            .opacity(Double(max(0, 1 - phase * 0.55)))
+            .scaleEffect(1.10 + phase * 1.55)
+            .offset(x: -64, y: 66 - phase * 164)
+            .opacity(Double(max(0, 1 - phase * 0.42)))
+            .blendMode(.screen)
 
             EffectImageView(name: "missile")
-                .frame(width: 128, height: 56)
+                .frame(width: 164, height: 72)
                 .rotationEffect(.degrees(-88))
-                .offset(y: 34 - phase * 126)
-                .scaleEffect(0.90 + phase * 0.28)
-                .shadow(color: .orange.opacity(0.82), radius: 8)
+                .offset(y: 70 - phase * 210)
+                .scaleEffect(0.86 + phase * 0.38)
+                .shadow(color: .yellow.opacity(0.92), radius: 12)
+                .shadow(color: .orange.opacity(0.74), radius: 22)
 
             EffectLabel(effect: effect, color: Color(red: 1.0, green: 0.72, blue: 0.12))
-                .offset(y: 70)
-                .opacity(Double(max(0, 1 - phase * 0.20)))
+                .scaleEffect(1.30 - phase * 0.10)
+                .offset(y: 116)
+                .opacity(Double(max(0, 1 - phase * 0.12)))
         }
-        .frame(width: 220, height: 190)
+        .frame(width: 340, height: 330)
     }
 }
 

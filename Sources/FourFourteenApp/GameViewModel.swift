@@ -25,13 +25,15 @@ enum GamePhase: Equatable {
 @MainActor
 final class GameViewModel: ObservableObject {
     @Published var deckCount: Int = 1
+    @Published var playerCount: Int = 3
+    @Published var aiStyle: AIStyle = .relaxed
     @Published var selectedCards: Set<Card> = []
     @Published var notice: String = ""
     @Published var actionBanner: ActionBanner?
     @Published var tableEffect: CardGameEffectDescriptor?
     @Published var phase: GamePhase = .waiting
-    @Published var visibleHandCounts: [Int] = [0, 0, 0, 0]
-    @Published var tableRecords: [PlayRecord?] = Array(repeating: nil, count: 4)
+    @Published var visibleHandCounts: [Int] = [0, 0, 0]
+    @Published var tableRecords: [PlayRecord?] = Array(repeating: nil, count: 3)
     @Published private(set) var isHinting = false
     @Published var soundEnabled = true {
         didSet {
@@ -51,7 +53,7 @@ final class GameViewModel: ObservableObject {
     private let audio = AudioController()
 
     init() {
-        self.engine = GameEngine(deckCount: 1)
+        self.engine = GameEngine(deckCount: 1, playerCount: 3)
     }
 
     var state: GameState {
@@ -117,6 +119,23 @@ final class GameViewModel: ObservableObject {
         isHumanTurn && humanRocket414Cards != nil
     }
 
+    func setDeckCount(_ count: Int) {
+        guard phase != .dealing else { return }
+        deckCount = min(3, max(1, count))
+        resetWaitingPreviewIfNeeded()
+    }
+
+    func setPlayerCount(_ count: Int) {
+        guard phase != .dealing else { return }
+        playerCount = min(4, max(3, count))
+        resetWaitingPreviewIfNeeded()
+    }
+
+    func setAIStyle(_ style: AIStyle) {
+        guard phase != .dealing else { return }
+        aiStyle = style
+    }
+
     func dealNewGame() {
         guard phase != .dealing else { return }
         cancelHint()
@@ -125,9 +144,11 @@ final class GameViewModel: ObservableObject {
         actionBanner = nil
         tableEffect = nil
         audio.play(.shuffle)
-        engine = GameEngine(deckCount: deckCount)
+        deckCount = min(3, max(1, deckCount))
+        playerCount = min(4, max(3, playerCount))
+        engine = GameEngine(deckCount: deckCount, playerCount: playerCount)
         tableRecords = Array(repeating: nil, count: engine.state.players.count)
-        visibleHandCounts = [0, 0, 0, 0]
+        visibleHandCounts = Array(repeating: 0, count: engine.state.players.count)
         phase = .dealing
         objectWillChange.send()
         animateDeal()
@@ -157,6 +178,26 @@ final class GameViewModel: ObservableObject {
         guard !newCards.isEmpty else { return }
         cancelHint()
         selectedCards.formUnion(newCards)
+    }
+
+    func flipSelection(_ cards: [Card]) {
+        guard isHumanTurn else { return }
+        guard !cards.isEmpty else { return }
+        cancelHint()
+        for card in cards {
+            if selectedCards.contains(card) {
+                selectedCards.remove(card)
+            } else {
+                selectedCards.insert(card)
+            }
+        }
+    }
+
+    func clearSelection() {
+        guard !selectedCards.isEmpty else { return }
+        cancelHint()
+        selectedCards.removeAll()
+        audio.play(.tap)
     }
 
     func selectRocket414() {
@@ -303,6 +344,18 @@ final class GameViewModel: ObservableObject {
 }
 
 private extension GameViewModel {
+    func resetWaitingPreviewIfNeeded() {
+        guard phase == .waiting else { return }
+        cancelHint()
+        selectedCards.removeAll()
+        notice = ""
+        actionBanner = nil
+        tableEffect = nil
+        engine = GameEngine(deckCount: deckCount, playerCount: playerCount)
+        visibleHandCounts = Array(repeating: 0, count: engine.state.players.count)
+        tableRecords = Array(repeating: nil, count: engine.state.players.count)
+    }
+
     func animateDeal() {
         actionBanner = ActionBanner(text: "发牌", subtitle: "\(deckCount)副牌", kind: .deal)
         notice = "正在发牌..."
@@ -358,7 +411,7 @@ private extension GameViewModel {
                 updateTableRecords(fromEventIndex: eventCountBefore)
                 let effect = showEffectFromLatestEvent()
                 showBannerFromLatestEvent()
-                playSoundForLatestEvent()
+                playSoundForLatestEvent(effect: effect)
                 if effect?.intensity.isMajor == true {
                     clearBanner()
                 }
@@ -390,8 +443,9 @@ private extension GameViewModel {
                 notice = "\(engine.state.players[playerIndex].name)思考中..."
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 let snapshot = engine.state
+                let style = aiStyle
                 let action = await Task.detached(priority: .userInitiated) {
-                    AIPlayer().chooseAction(state: snapshot, for: playerIndex)
+                    AIPlayer(style: style).chooseAction(state: snapshot, for: playerIndex)
                 }.value
                 guard phase == .playing, engine.state == snapshot else {
                     continue
@@ -409,7 +463,7 @@ private extension GameViewModel {
                         updateTableRecords(fromEventIndex: eventCountBefore)
                         effect = showEffectFromLatestEvent()
                         showBannerFromLatestEvent(autoClear: false)
-                        playSoundForLatestEvent()
+                        playSoundForLatestEvent(effect: effect)
                         if effect?.intensity.isMajor == true {
                             clearBanner()
                         }
@@ -539,15 +593,15 @@ private extension GameViewModel {
         return max(base, effect.intensity.durationNanoseconds + extra)
     }
 
-    func playSoundForLatestEvent() {
+    func playSoundForLatestEvent(effect: CardGameEffectDescriptor? = nil) {
         guard let record = engine.state.eventLog.last else { return }
         switch record.kind {
         case .normal:
-            audio.play(.playcard)
+            audio.playCard(effect: effect ?? CardGameEffectMapper.effect(for: record))
         case .pass:
             audio.play(.pass)
         case .cha, .gou:
-            audio.play(.reaction)
+            audio.playCard(effect: effect ?? CardGameEffectMapper.effect(for: record))
         case .system:
             if record.message.contains("死叉") || record.message.contains("重新起手") {
                 audio.play(.reaction)

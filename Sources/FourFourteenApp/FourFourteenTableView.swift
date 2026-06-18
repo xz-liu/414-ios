@@ -49,7 +49,12 @@ struct FourFourteenTableView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.78))
                 .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            playerCountSelector
+
+            aiStyleSelector
 
             deckStepper
 
@@ -68,28 +73,31 @@ struct FourFourteenTableView: View {
                 model.toggleMusic()
             }
         }
-        .frame(height: 36)
+        .frame(height: 38)
     }
 
     private var tableRow: some View {
         ZStack(alignment: .top) {
+            let seatCount = model.state.players.count
             tableCenter
                 .padding(.horizontal, 56)
                 .padding(.top, 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .zIndex(model.isWaiting || model.isDealing ? 4 : 0)
 
-            topAI(index: 2)
-                .zIndex(2)
-                .allowsHitTesting(false)
+            if seatCount == 4 {
+                topAI(index: 2)
+                    .zIndex(2)
+                    .allowsHitTesting(false)
+            }
 
             HStack {
                 sideAI(index: 1)
                 Spacer(minLength: 0)
-                sideAI(index: 3)
+                sideAI(index: seatCount == 4 ? 3 : 2)
             }
             .padding(.horizontal, 58)
-            .padding(.top, 18)
+            .padding(.top, seatCount == 4 ? 18 : 10)
             .zIndex(2)
             .allowsHitTesting(false)
         }
@@ -107,6 +115,7 @@ struct FourFourteenTableView: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
+            let seatCount = model.state.players.count
             ZStack {
                 TableCenterSurface(width: width, height: height)
 
@@ -120,19 +129,27 @@ struct FourFourteenTableView: View {
                         .position(x: width * 0.50, y: height * 0.52)
                 }
 
-                tablePlaySlot(index: 2, width: min(260, width * 0.42))
-                    .position(x: width * 0.50, y: min(58, height * 0.24))
-
                 tablePlaySlot(index: 1, width: min(238, width * 0.34))
-                    .position(x: width * 0.27, y: height * 0.50)
+                    .position(
+                        x: seatCount == 4 ? width * 0.27 : width * 0.30,
+                        y: seatCount == 4 ? height * 0.50 : height * 0.43
+                    )
 
-                tablePlaySlot(index: 3, width: min(238, width * 0.34))
-                    .position(x: width * 0.73, y: height * 0.50)
+                if seatCount == 4 {
+                    tablePlaySlot(index: 2, width: min(260, width * 0.42))
+                        .position(x: width * 0.50, y: min(58, height * 0.24))
+
+                    tablePlaySlot(index: 3, width: min(238, width * 0.34))
+                        .position(x: width * 0.73, y: height * 0.50)
+                } else {
+                    tablePlaySlot(index: 2, width: min(238, width * 0.34))
+                        .position(x: width * 0.70, y: height * 0.43)
+                }
 
                 tablePlaySlot(index: 0, width: min(300, width * 0.48))
                     .position(x: width * 0.50, y: max(height - 48, height * 0.74))
 
-                TableEffectOverlay(effect: model.tableEffect, seatCount: 4)
+                TableEffectOverlay(effect: model.tableEffect, seatCount: seatCount)
                     .zIndex(5)
             }
         }
@@ -152,12 +169,17 @@ struct FourFourteenTableView: View {
         .shadow(color: .black.opacity(0.52), radius: 5, y: 2)
     }
 
+    @ViewBuilder
     private func tablePlaySlot(index: Int, width: CGFloat) -> some View {
-        TablePlaySlotView(
-            playerName: model.state.players[index].name,
-            record: model.tableRecord(for: index)
-        )
-        .frame(width: width, height: 76)
+        if model.state.players.indices.contains(index) {
+            TablePlaySlotView(
+                playerName: model.state.players[index].name,
+                record: model.tableRecord(for: index)
+            )
+            .frame(width: width, height: 76)
+        } else {
+            Color.clear.frame(width: width, height: 76)
+        }
     }
 
     private var preGamePanel: some View {
@@ -173,7 +195,7 @@ struct FourFourteenTableView: View {
                         .shadow(color: .black.opacity(0.55), radius: 8, y: 3)
 
                     HStack(spacing: 18) {
-                        ForEach(0..<4, id: \.self) { index in
+                        ForEach(model.state.players.indices, id: \.self) { index in
                             VStack(spacing: 2) {
                                 Text(model.state.players[index].name)
                                     .font(.caption.weight(.bold))
@@ -259,8 +281,8 @@ struct FourFourteenTableView: View {
                 markedCards: Set(model.humanRocket414Cards ?? [])
             ) { card in
                 model.toggle(card)
-            } onSelectCards: { cards in
-                model.select(cards)
+            } onFlipCards: { cards in
+                model.flipSelection(cards)
             }
             .frame(height: handSpreadHeight)
 
@@ -274,6 +296,9 @@ struct FourFourteenTableView: View {
                     .shadow(color: model.isHumanTurn ? .yellow.opacity(0.55) : .clear, radius: 8)
                 if model.humanRocket414Count > 0 {
                     rocket414Badge
+                }
+                if !model.selectedCards.isEmpty {
+                    clearSelectionButton
                 }
                 Spacer(minLength: 0)
             }
@@ -301,6 +326,19 @@ struct FourFourteenTableView: View {
         }
         .buttonStyle(.plain)
         .disabled(!model.canSelectRocket414)
+    }
+
+    private var clearSelectionButton: some View {
+        Button {
+            model.clearSelection()
+        } label: {
+            Label("取消", systemImage: "xmark.circle.fill")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.white.opacity(0.88))
+                .shadow(color: .black.opacity(0.48), radius: 4, y: 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var handSpreadHeight: CGFloat {
@@ -413,18 +451,62 @@ struct FourFourteenTableView: View {
         .buttonStyle(.plain)
     }
 
+    private var playerCountSelector: some View {
+        HStack(spacing: 5) {
+            settingTextButton("3人", active: model.playerCount == 3, enabled: !model.isDealing) {
+                model.setPlayerCount(3)
+            }
+            settingTextButton("4人", active: model.playerCount == 4, enabled: !model.isDealing) {
+                model.setPlayerCount(4)
+            }
+        }
+        .frame(width: 74, height: 34)
+    }
+
+    private var aiStyleSelector: some View {
+        HStack(spacing: 5) {
+            settingTextButton("休闲", active: model.aiStyle == .relaxed, enabled: !model.isDealing) {
+                model.setAIStyle(.relaxed)
+            }
+            settingTextButton("竞技", active: model.aiStyle == .competitive, enabled: !model.isDealing) {
+                model.setAIStyle(.competitive)
+            }
+        }
+        .frame(width: 94, height: 34)
+    }
+
+    private func settingTextButton(
+        _ title: String,
+        active: Bool,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption2.weight(.black))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .foregroundStyle(active ? Color(red: 1.00, green: 0.82, blue: 0.22) : .white.opacity(enabled ? 0.58 : 0.26))
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .shadow(color: active ? Color.yellow.opacity(0.64) : .clear, radius: 5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
     private var deckStepper: some View {
         HStack(spacing: 2) {
             deckAdjustButton(icon: "minus", enabled: !model.isDealing && model.deckCount > 1) {
-                model.deckCount = max(1, model.deckCount - 1)
+                model.setDeckCount(model.deckCount - 1)
             }
             Text("\(model.deckCount)副")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 42)
                 .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
-            deckAdjustButton(icon: "plus", enabled: !model.isDealing && model.deckCount < 4) {
-                model.deckCount = min(4, model.deckCount + 1)
+            deckAdjustButton(icon: "plus", enabled: !model.isDealing && model.deckCount < 3) {
+                model.setDeckCount(model.deckCount + 1)
             }
         }
         .frame(width: 108, height: 34)

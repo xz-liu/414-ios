@@ -1,7 +1,25 @@
 import Foundation
 
+public enum AIStyle: String, Codable, Sendable, CaseIterable {
+    case relaxed
+    case competitive
+
+    public var displayName: String {
+        switch self {
+        case .relaxed:
+            return "休闲"
+        case .competitive:
+            return "竞技"
+        }
+    }
+}
+
 public struct AIPlayer: Sendable {
-    public init() {}
+    public let style: AIStyle
+
+    public init(style: AIStyle = .competitive) {
+        self.style = style
+    }
 
     public func chooseAction(state: GameState, for playerIndex: Int) -> PlayerAction {
         let actions = legalActions(from: state, for: playerIndex)
@@ -14,7 +32,7 @@ public struct AIPlayer: Sendable {
         }
 
         let candidates = boundedCandidateActions(actions, state: state, playerIndex: playerIndex)
-        var evaluator = AIEvaluator(state: state, playerIndex: playerIndex, actions: candidates)
+        var evaluator = AIEvaluator(state: state, playerIndex: playerIndex, actions: candidates, style: style)
         return evaluator.chooseBestAction()
     }
 
@@ -254,13 +272,15 @@ private struct AIEvaluator {
     let state: GameState
     let playerIndex: Int
     let actions: [PlayerAction]
+    let style: AIStyle
     let controlProfile: ControlProfile
     var metricsCache: [String: PlanMetrics] = [:]
 
-    init(state: GameState, playerIndex: Int, actions: [PlayerAction]) {
+    init(state: GameState, playerIndex: Int, actions: [PlayerAction], style: AIStyle) {
         self.state = state
         self.playerIndex = playerIndex
         self.actions = actions
+        self.style = style
         self.controlProfile = ControlProfile(
             state: state,
             hand: state.hands[playerIndex]
@@ -301,7 +321,7 @@ private struct AIEvaluator {
         let before = planMetrics(for: hand)
         let after = planMetrics(for: remaining)
 
-        return actionBenefit(action, combination: combination, before: before, after: after)
+        let baseScore = actionBenefit(action, combination: combination, before: before, after: after)
             + singleCardOutDefenseScore(action, combination: combination)
             - resourceCost(action, combination: combination)
             - structureCost(action, combination: combination, before: before, after: after)
@@ -309,6 +329,7 @@ private struct AIEvaluator {
             - overkillPenalty(action, combination: combination)
             - greedyRunPenalty(action, combination: combination, before: before, after: after)
             + endgameBonus(action, remaining: remaining)
+        return baseScore + relaxedStyleAdjustment(action, combination: combination, remaining: remaining)
     }
 
     func passScore() -> Int {
@@ -317,8 +338,12 @@ private struct AIEvaluator {
             let coveredPressure = tablePressure * 2 -
                 threatContext.coverageStrength * 2 -
                 threatContext.interceptReliabilityAfterMe
-            return -max(0, coveredPressure + controlProfile.followPressureBonus) -
+            var score = -max(0, coveredPressure + controlProfile.followPressureBonus) -
                 threatContext.defenseResponsibility * 14
+            if style == .relaxed && !relaxedStyleBypass(remaining: nil) {
+                score += 320 + max(0, 46 - tablePressure) * 4
+            }
+            return score
         case .cha, .gou:
             return 0
         case .lead, .gameOver:
@@ -782,6 +807,89 @@ private struct AIEvaluator {
             bonus += tablePressure * 2
         }
         return bonus
+    }
+
+    func relaxedStyleAdjustment(
+        _ action: PlayerAction,
+        combination: Combination?,
+        remaining: [Card]
+    ) -> Int {
+        guard style == .relaxed,
+              let combination,
+              !relaxedStyleBypass(remaining: remaining)
+        else { return 0 }
+
+        var adjustment = 0
+        switch state.prompt.kind {
+        case .lead:
+            switch combination.kind {
+            case .singleRun:
+                adjustment += 360 + combination.sequenceLength * 34
+            case .pairRun:
+                adjustment += 420 + combination.sequenceLength * 42
+            case .single, .pair:
+                if rankValue(combination.primaryRank) <= Rank.ten.rawValue {
+                    adjustment += 180
+                }
+            case .triadWithSingle, .triadWithPair:
+                adjustment -= hand.count > 7 ? 260 : 0
+            case .sameRankBomb:
+                adjustment -= 760
+            case .doubleJoker:
+                adjustment -= 1_000
+            case .rocket414:
+                adjustment -= 1_240
+            case .cha, .gou:
+                break
+            }
+            if action.cards.contains(where: isControlCard) {
+                adjustment -= 420
+            }
+        case .follow:
+            adjustment -= 260
+            if action.cards.contains(where: isControlCard) {
+                adjustment -= 520
+            }
+            if combination.isBombLike {
+                adjustment -= 720
+            }
+            if let previous = state.lastPlayableRecord?.combination,
+               !previous.isBombLike,
+               combination.isBombLike {
+                adjustment -= 360
+            }
+        case .cha:
+            if !threatContext.currentControllerIsThreat {
+                adjustment -= combination.primaryRank == .two ? 900 : 520
+            }
+        case .gou:
+            if !threatContext.currentControllerIsThreat {
+                adjustment -= combination.primaryRank == .two ? 520 : 340
+            }
+        case .gameOver:
+            break
+        }
+
+        if let threatCards = threatContext.minimumThreatCards, threatCards <= 2 {
+            adjustment /= 2
+        }
+        return adjustment
+    }
+
+    func relaxedStyleBypass(remaining: [Card]?) -> Bool {
+        if threatContext.defenseResponsibility >= 55 {
+            return true
+        }
+        if tablePressure >= 78 {
+            return true
+        }
+        if hand.count <= 5 {
+            return true
+        }
+        if let remaining, remaining.count <= 2 {
+            return true
+        }
+        return false
     }
 
     func singleCardOutDefenseScore(_ action: PlayerAction, combination: Combination?) -> Int {

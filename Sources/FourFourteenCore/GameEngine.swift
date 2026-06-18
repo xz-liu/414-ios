@@ -17,19 +17,14 @@ public final class GameEngine {
     public private(set) var state: GameState
     private var pendingReaction: PendingReaction?
 
-    public convenience init(deckCount: Int = 1) {
+    public convenience init(deckCount: Int = 1, playerCount: Int = 4) {
         var deck = DeckConfig(deckCount: deckCount).makeDeck()
         deck.shuffle()
-        self.init(deckCount: deckCount, deck: deck)
+        self.init(deckCount: deckCount, deck: deck, playerCount: playerCount)
     }
 
-    public init(deckCount: Int, deck: [Card]) {
-        let players = [
-            GamePlayer(name: "你", isHuman: true),
-            GamePlayer(name: "AI 左", isHuman: false),
-            GamePlayer(name: "AI 上", isHuman: false),
-            GamePlayer(name: "AI 右", isHuman: false)
-        ]
+    public init(deckCount: Int, deck: [Card], playerCount: Int = 4) {
+        let players = Self.defaultPlayers(playerCount: playerCount)
         let hands = Self.deal(deck: deck, playerCount: players.count)
         let starter = Self.findHeartThreeHolder(in: hands) ?? 0
         self.state = GameState(
@@ -108,6 +103,23 @@ public final class GameEngine {
 }
 
 public extension GameEngine {
+    static func defaultPlayers(playerCount: Int) -> [GamePlayer] {
+        precondition((3...4).contains(playerCount), "414 only supports 3 or 4 players")
+        if playerCount == 3 {
+            return [
+                GamePlayer(name: "你", isHuman: true),
+                GamePlayer(name: "AI 左", isHuman: false),
+                GamePlayer(name: "AI 右", isHuman: false)
+            ]
+        }
+        return [
+            GamePlayer(name: "你", isHuman: true),
+            GamePlayer(name: "AI 左", isHuman: false),
+            GamePlayer(name: "AI 上", isHuman: false),
+            GamePlayer(name: "AI 右", isHuman: false)
+        ]
+    }
+
     static func deal(deck: [Card], playerCount: Int) -> [[Card]] {
         var hands = Array(repeating: [Card](), count: playerCount)
         for (index, card) in deck.enumerated() {
@@ -233,7 +245,7 @@ private extension GameEngine {
             state.lastPlayableRecord = nil
             state.passCount = 0
             state.prompt = TurnPrompt(kind: .lead, playerIndex: leader)
-            appendSystemEvent("三家过牌，\(state.players[leader].name)重新起手")
+            appendSystemEvent("\(state.players.count - 1)家过牌，\(state.players[leader].name)重新起手")
         } else {
             setFollowPrompt(after: playerIndex)
         }

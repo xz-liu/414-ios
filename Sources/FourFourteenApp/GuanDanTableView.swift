@@ -125,8 +125,8 @@ struct GuanDanTableView: View {
                     selectedCards: model.selectedCards
                 ) { card in
                     model.toggle(card)
-                } onSelectCards: { cards in
-                    model.select(cards)
+                } onFlipCards: { cards in
+                    model.flipSelection(cards)
                 }
                 .frame(height: handSpreadHeight)
 
@@ -141,6 +141,9 @@ struct GuanDanTableView: View {
                     Text("红桃2逢人配")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Color(red: 1.00, green: 0.50, blue: 0.55).opacity(0.86))
+                    if !model.selectedCards.isEmpty {
+                        clearSelectionButton
+                    }
                     Spacer(minLength: 0)
                 }
                 .frame(height: 18)
@@ -152,6 +155,19 @@ struct GuanDanTableView: View {
 
     private var handSpreadHeight: CGFloat {
         model.visibleCardCount(for: 0) > 22 ? 108 : 82
+    }
+
+    private var clearSelectionButton: some View {
+        Button {
+            model.clearSelection()
+        } label: {
+            Label("取消", systemImage: "xmark.circle.fill")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.white.opacity(0.88))
+                .shadow(color: .black.opacity(0.48), radius: 4, y: 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var bottomAreaHeight: CGFloat {

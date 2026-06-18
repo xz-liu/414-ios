@@ -18,6 +18,21 @@ struct GameEngineTests {
         #expect(GameEngine.findHeartThreeHolder(in: hands) != nil)
     }
 
+    @Test("deals three-player games for one to three decks")
+    func dealsThreePlayerGames() throws {
+        for deckCount in 1...3 {
+            let deck = DeckConfig(deckCount: deckCount).makeDeck()
+            let engine = GameEngine(deckCount: deckCount, deck: deck, playerCount: 3)
+            let starter = try #require(GameEngine.findHeartThreeHolder(in: engine.state.hands))
+
+            #expect(engine.state.players.map(\.name) == ["你", "AI 左", "AI 右"])
+            #expect(engine.state.hands.map(\.count) == Array(repeating: 18 * deckCount, count: 3))
+            #expect(Set(engine.state.hands.flatMap { $0 }.map(\.id)).count == deckCount * 54)
+            #expect(engine.state.prompt.kind == .lead)
+            #expect(engine.state.prompt.playerIndex == starter)
+        }
+    }
+
     @Test("three passes return lead to the last player who played")
     func threePassesResetLead() throws {
         let engine = GameEngine(
@@ -38,6 +53,27 @@ struct GameEngineTests {
 
         #expect(engine.state.prompt.kind == .lead)
         #expect(engine.state.prompt.playerIndex == 0)
+    }
+
+    @Test("two passes return lead in a three-player game")
+    func twoPassesResetLeadInThreePlayerGame() throws {
+        let engine = GameEngine(
+            players: Self.threePlayers,
+            hands: [
+                [card(.five), card(.nine)],
+                [card(.six)],
+                [card(.seven)]
+            ],
+            startingPlayer: 0
+        )
+
+        try engine.apply(.play([card(.five)]))
+        try engine.apply(.pass)
+        try engine.apply(.pass)
+
+        #expect(engine.state.prompt.kind == .lead)
+        #expect(engine.state.prompt.playerIndex == 0)
+        #expect(engine.state.eventLog.last?.message == "2家过牌，Human重新起手")
     }
 
     @Test("cha and gou transfer lead and cannot be beaten")
@@ -65,6 +101,34 @@ struct GameEngineTests {
         #expect(engine.state.prompt.kind == .lead)
         #expect(engine.state.prompt.playerIndex == 2)
         #expect(engine.state.lastPlayableRecord == nil)
+    }
+
+    @Test("three-player dead cha gives lead to cha player")
+    func threePlayerDeadChaTransfersLead() throws {
+        let engine = GameEngine(
+            players: Self.threePlayers,
+            hands: [
+                [card(.five, .hearts), card(.nine)],
+                [card(.five, .diamonds), card(.five, .clubs), card(.eight)],
+                [card(.five, .spades), card(.six)]
+            ],
+            startingPlayer: 0
+        )
+
+        try engine.apply(.play([card(.five, .hearts)]))
+        #expect(engine.state.prompt.kind == .cha)
+        #expect(engine.state.prompt.playerIndex == 1)
+
+        try engine.apply(.cha([card(.five, .diamonds), card(.five, .clubs)]))
+        #expect(engine.state.prompt.kind == .gou)
+        #expect(engine.state.prompt.playerIndex == 2)
+
+        try engine.apply(.pass)
+
+        #expect(engine.state.prompt.kind == .lead)
+        #expect(engine.state.prompt.playerIndex == 1)
+        #expect(engine.state.lastPlayableRecord == nil)
+        #expect(engine.state.eventLog.last?.message == "无人勾，AI 左死叉后起手")
     }
 
     @Test("first player to empty hand ends game and scores remaining cards")
@@ -939,11 +1003,109 @@ struct GameEngineTests {
         }
     }
 
+    @Test("AI defaults to competitive style")
+    func aiDefaultsToCompetitiveStyle() {
+        #expect(AIPlayer().style == .competitive)
+    }
+
+    @Test("relaxed AI still finishes in one action")
+    func relaxedAIStillFinishes() {
+        let six = card(.six, .hearts)
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.three), card(.four), card(.five), card(.seven)],
+                [six],
+                [card(.eight), card(.nine), card(.ten)],
+                [card(.jack), card(.queen), card(.king)]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(kind: .single, cards: [card(.five, .clubs)], primaryRank: .five),
+                kind: .normal,
+                message: "Human出单张"
+            )
+        )
+
+        #expect(AIPlayer(style: .relaxed).chooseAction(state: state, for: 1) == .play([six]))
+    }
+
+    @Test("relaxed AI passes instead of spending a bomb in low pressure")
+    func relaxedAIPassesInsteadOfLowPressureBomb() {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [
+                    card(.four, .clubs),
+                    card(.five, .clubs),
+                    card(.six, .clubs),
+                    card(.seven, .clubs),
+                    card(.eight, .clubs),
+                    card(.nine, .clubs)
+                ],
+                [
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .clubs),
+                    card(.four, .hearts),
+                    card(.five, .hearts),
+                    card(.six, .hearts),
+                    card(.seven, .hearts),
+                    card(.eight, .hearts)
+                ],
+                [
+                    card(.four, .diamonds),
+                    card(.five, .diamonds),
+                    card(.six, .diamonds),
+                    card(.seven, .diamonds),
+                    card(.eight, .diamonds),
+                    card(.nine, .diamonds)
+                ],
+                [
+                    card(.four, .spades),
+                    card(.five, .spades),
+                    card(.six, .spades),
+                    card(.seven, .spades),
+                    card(.eight, .spades),
+                    card(.nine, .spades)
+                ]
+            ],
+            prompt: TurnPrompt(kind: .follow, playerIndex: 1),
+            lastPlayableRecord: PlayRecord(
+                playerIndex: 0,
+                playerName: "Human",
+                combination: Combination(
+                    kind: .pair,
+                    cards: [card(.king, .clubs), card(.king, .diamonds)],
+                    primaryRank: .king
+                ),
+                kind: .normal,
+                message: "Human出对子"
+            )
+        )
+
+        let ai = AIPlayer(style: .relaxed)
+        let action = ai.chooseAction(state: state, for: 1)
+
+        #expect(ai.legalActions(from: state, for: 1).contains(action))
+        #expect(action == .pass)
+    }
+
     private static let players = [
         GamePlayer(name: "Human", isHuman: true),
         GamePlayer(name: "AI1", isHuman: false),
         GamePlayer(name: "AI2", isHuman: false),
         GamePlayer(name: "AI3", isHuman: false)
+    ]
+
+    private static let threePlayers = [
+        GamePlayer(name: "Human", isHuman: true),
+        GamePlayer(name: "AI 左", isHuman: false),
+        GamePlayer(name: "AI 右", isHuman: false)
     ]
 }
 

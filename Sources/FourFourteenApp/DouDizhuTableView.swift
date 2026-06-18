@@ -125,8 +125,8 @@ struct DouDizhuTableView: View {
                     selectedCards: model.selectedCards
                 ) { card in
                     model.toggle(card)
-                } onSelectCards: { cards in
-                    model.select(cards)
+                } onFlipCards: { cards in
+                    model.flipSelection(cards)
                 }
                 .frame(height: handSpreadHeight)
 
@@ -138,6 +138,9 @@ struct DouDizhuTableView: View {
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(model.isHumanTurn ? .yellow : .white.opacity(0.86))
                         .shadow(color: model.isHumanTurn ? .yellow.opacity(0.55) : .clear, radius: 8)
+                    if !model.selectedCards.isEmpty {
+                        clearSelectionButton
+                    }
                     Spacer(minLength: 0)
                 }
                 .frame(height: 18)
@@ -149,6 +152,19 @@ struct DouDizhuTableView: View {
 
     private var handSpreadHeight: CGFloat {
         model.visibleCardCount(for: 0) > 22 ? 104 : 82
+    }
+
+    private var clearSelectionButton: some View {
+        Button {
+            model.clearSelection()
+        } label: {
+            Label("取消", systemImage: "xmark.circle.fill")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.white.opacity(0.88))
+                .shadow(color: .black.opacity(0.48), radius: 4, y: 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var bottomAreaHeight: CGFloat {

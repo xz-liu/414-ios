@@ -43,11 +43,11 @@ struct HandSpreadView: View {
     let selectedCards: Set<Card>
     var markedCards: Set<Card> = []
     let onTap: (Card) -> Void
-    let onSelectCards: ([Card]) -> Void
+    let onFlipCards: ([Card]) -> Void
 
     @State private var gestureStart: CGPoint?
     @State private var isSwipeSelecting = false
-    @State private var swipeSelectedIDs: Set<String> = []
+    @State private var swipeFlippedIDs: Set<String> = []
     @State private var lastSwipeIndex: Int?
 
     var body: some View {
@@ -193,16 +193,19 @@ struct HandSpreadView: View {
 
         let horizontalDistance = abs(value.location.x - value.startLocation.x)
         let verticalDistance = abs(value.location.y - value.startLocation.y)
-        if horizontalDistance > 10 || verticalDistance > 10 {
+        if !isSwipeSelecting, horizontalDistance > 10 || verticalDistance > 10 {
             isSwipeSelecting = true
+            if let startIndex = cardIndex(at: value.startLocation, layout: layout) {
+                flipRange(endingAt: startIndex)
+            }
         }
 
         guard isSwipeSelecting,
               let index = cardIndex(at: value.location, layout: layout)
         else { return }
-        guard lastSwipeIndex != index || swipeSelectedIDs.isEmpty else { return }
+        guard lastSwipeIndex != index || swipeFlippedIDs.isEmpty else { return }
 
-        selectRange(endingAt: index)
+        flipRange(endingAt: index)
     }
 
     private func handleGestureEnd(
@@ -212,7 +215,7 @@ struct HandSpreadView: View {
         defer {
             gestureStart = nil
             isSwipeSelecting = false
-            swipeSelectedIDs.removeAll()
+            swipeFlippedIDs.removeAll()
             lastSwipeIndex = nil
         }
 
@@ -249,26 +252,26 @@ struct HandSpreadView: View {
         let step = max(1, layout.cardWidth + row.spacing)
         let totalWidth = layout.cardWidth + CGFloat(max(0, row.count - 1)) * step
         let leftInset = max(0, (layout.width - totalWidth) / 2)
-        let localX = min(max(location.x - leftInset, 0), totalWidth)
-        let rowIndex = min(row.count - 1, max(0, Int(localX / step)))
+        let centerRelativeX = location.x - leftInset - layout.cardWidth / 2
+        let rowIndex = min(row.count - 1, max(0, Int((centerRelativeX / step).rounded())))
         return min(cards.count - 1, row.startIndex + rowIndex)
     }
 
-    private func selectRange(endingAt index: Int) {
+    private func flipRange(endingAt index: Int) {
         let start = lastSwipeIndex ?? index
         let lower = min(start, index)
         let upper = max(start, index)
-        var cardsToSelect: [Card] = []
+        var cardsToFlip: [Card] = []
 
         for cardIndex in lower...upper {
             let card = cards[cardIndex]
-            guard !swipeSelectedIDs.contains(card.id) else { continue }
-            swipeSelectedIDs.insert(card.id)
-            cardsToSelect.append(card)
+            guard !swipeFlippedIDs.contains(card.id) else { continue }
+            swipeFlippedIDs.insert(card.id)
+            cardsToFlip.append(card)
         }
 
-        if !cardsToSelect.isEmpty {
-            onSelectCards(cardsToSelect)
+        if !cardsToFlip.isEmpty {
+            onFlipCards(cardsToFlip)
         }
         lastSwipeIndex = index
     }
