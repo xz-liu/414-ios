@@ -1033,6 +1033,70 @@ struct GameEngineTests {
         #expect(AIPlayer(style: .relaxed).chooseAction(state: state, for: 1) == .play([six]))
     }
 
+    @Test("AI keeps compact control endgames intact instead of splitting a bomb")
+    func aiKeepsCompactControlEndgameIntact() throws {
+        let aces = [
+            card(.ace, .hearts),
+            card(.ace, .diamonds),
+            card(.ace, .clubs)
+        ]
+        let hand = aces + [
+            card(.smallJoker, nil),
+            card(.bigJoker, nil)
+        ]
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.three), card(.four), card(.five)],
+                hand,
+                [card(.six), card(.seven), card(.eight)],
+                [card(.nine), card(.ten), card(.jack)]
+            ],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 1)
+        )
+
+        for style in AIStyle.allCases {
+            let action = AIPlayer(style: style).chooseAction(state: state, for: 1)
+            let combination = try #require(RulesEngine.classify(action.cards))
+
+            #expect(combination.kind == .sameRankBomb)
+            #expect(combination.primaryRank == .ace)
+            #expect(Set(action.cards) == Set(aces))
+        }
+    }
+
+    @Test("AI does not break a same-rank bomb just to make a short run")
+    func aiDoesNotBreakBombForShortRun() throws {
+        let state = GameState(
+            deckCount: 1,
+            players: Self.players,
+            hands: [
+                [card(.six), card(.seven), card(.eight)],
+                [
+                    card(.three, .hearts),
+                    card(.three, .diamonds),
+                    card(.three, .clubs),
+                    card(.four, .hearts),
+                    card(.five, .hearts),
+                    card(.nine, .clubs),
+                    card(.jack, .clubs),
+                    card(.king, .clubs)
+                ],
+                [card(.six, .diamonds), card(.seven, .diamonds), card(.eight, .diamonds)],
+                [card(.six, .spades), card(.seven, .spades), card(.eight, .spades)]
+            ],
+            prompt: TurnPrompt(kind: .lead, playerIndex: 1)
+        )
+
+        let action = AIPlayer().chooseAction(state: state, for: 1)
+        let combination = try #require(RulesEngine.classify(action.cards))
+        let usesThree = action.cards.contains { $0.rank == .three }
+
+        #expect(!(combination.kind == .singleRun && usesThree))
+        #expect(!(combination.kind == .single && combination.primaryRank == .three))
+    }
+
     @Test("relaxed AI passes instead of spending a bomb in low pressure")
     func relaxedAIPassesInsteadOfLowPressureBomb() {
         let state = GameState(

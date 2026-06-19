@@ -340,11 +340,21 @@ struct DouDizhuTableView: View {
     }
 
     private func playSlot(index: Int, width: CGFloat) -> some View {
-        DouDizhuPlaySlotView(
-            playerName: model.state.players[index].name,
-            record: model.tableRecord(for: index)
-        )
-        .frame(width: width, height: 76)
+        Group {
+            if model.state.phase == .gameOver, index != 0 {
+                RevealedHandStrip(
+                    playerName: model.state.players[index].name,
+                    cards: model.state.hands[index]
+                )
+                .frame(width: width, height: 92)
+            } else {
+                DouDizhuPlaySlotView(
+                    playerName: model.state.players[index].name,
+                    record: model.tableRecord(for: index)
+                )
+                .frame(width: width, height: 76)
+            }
+        }
     }
 
     private func iconButton(icon: String, active: Bool, action: @escaping () -> Void) -> some View {

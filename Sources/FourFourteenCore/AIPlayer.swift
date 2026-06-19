@@ -323,10 +323,13 @@ private struct AIEvaluator {
 
         let baseScore = actionBenefit(action, combination: combination, before: before, after: after)
             + singleCardOutDefenseScore(action, combination: combination)
+            + compactEndgamePlanBonus(action, combination: combination, remaining: remaining, before: before, after: after)
             - resourceCost(action, combination: combination)
             - structureCost(action, combination: combination, before: before, after: after)
             - counterRisk(action, combination: combination)
             - overkillPenalty(action, combination: combination)
+            - bombReserveSplitPenalty(action, combination: combination, before: before, after: after)
+            - compactEndgameSplitPenalty(action, combination: combination)
             - greedyRunPenalty(action, combination: combination, before: before, after: after)
             + endgameBonus(action, remaining: remaining)
         return baseScore + relaxedStyleAdjustment(action, combination: combination, remaining: remaining)
@@ -807,6 +810,127 @@ private struct AIEvaluator {
             bonus += tablePressure * 2
         }
         return bonus
+    }
+
+    func compactEndgamePlanBonus(
+        _ action: PlayerAction,
+        combination: Combination?,
+        remaining: [Card],
+        before: PlanMetrics,
+        after: PlanMetrics
+    ) -> Int {
+        guard hand.count <= 8,
+              state.prompt.kind == .lead || state.prompt.kind == .follow,
+              let combination,
+              !remaining.isEmpty,
+              after.estimatedTurns == 1,
+              let remainingCombination = RulesEngine.classify(remaining)
+        else { return 0 }
+        guard combination.isBombLike || remainingCombination.isBombLike || breaksSameRankBomb(action) else {
+            return 0
+        }
+
+        var bonus = 1_450 + max(0, before.estimatedTurns - after.estimatedTurns) * 520
+        bonus += min(5, action.cards.count) * 95
+
+        if combination.isBombLike || remainingCombination.isBombLike {
+            bonus += 1_350
+        }
+        if combination.kind == .sameRankBomb && remainingCombination.kind == .doubleJoker {
+            bonus += 900
+        }
+        if combination.kind == .doubleJoker && remainingCombination.kind == .sameRankBomb {
+            bonus += 520
+        }
+        if combination.kind == .single || combination.kind == .pair {
+            bonus -= 620
+        }
+        return bonus
+    }
+
+    func compactEndgameSplitPenalty(_ action: PlayerAction, combination: Combination?) -> Int {
+        guard hand.count <= 8,
+              state.prompt.kind == .lead || state.prompt.kind == .follow,
+              let combination,
+              combination.kind == .single || combination.kind == .pair,
+              breaksSameRankBomb(action)
+        else { return 0 }
+
+        let hasCompactAlternative = actions.contains { candidateAction in
+            guard candidateAction.cards.count >= 3,
+                  let candidateCombination = self.combination(for: candidateAction),
+                  candidateCombination.isBombLike
+            else { return false }
+
+            let remaining = hand.removing(candidateAction.cards)
+            return !remaining.isEmpty && RulesEngine.classify(remaining) != nil
+        }
+        return hasCompactAlternative ? 1_900 : 0
+    }
+
+    func bombReserveSplitPenalty(
+        _ action: PlayerAction,
+        combination: Combination?,
+        before: PlanMetrics,
+        after: PlanMetrics
+    ) -> Int {
+        guard let combination,
+              action.cards.count < hand.count,
+              !combination.isBombLike,
+              combination.kind != .cha,
+              combination.kind != .gou
+        else { return 0 }
+
+        let splitRanks = Set(action.cards.map(\.rank)).filter { rank in
+            let originalCount = hand.count(of: rank)
+            guard originalCount >= 3 else { return false }
+            return action.cards.count(of: rank) < originalCount
+        }
+        guard !splitRanks.isEmpty else { return 0 }
+
+        var penalty = 0
+        for rank in splitRanks {
+            let originalCount = hand.count(of: rank)
+            let remainingCount = originalCount - action.cards.count(of: rank)
+            var rankPenalty = originalCount >= 4 ? 1_180 : 760
+            rankPenalty += rankValue(rank) * 24
+            if remainingCount < 3 {
+                rankPenalty += originalCount >= 4 ? 980 : 680
+            }
+            penalty += rankPenalty
+        }
+
+        switch combination.kind {
+        case .singleRun, .pairRun:
+            penalty += 4_200 * splitRanks.count
+        case .single, .pair:
+            penalty += 260 * splitRanks.count
+        case .triadWithSingle, .triadWithPair:
+            penalty += hand.count > 7 ? 520 : 220
+        default:
+            break
+        }
+
+        let turnImprovement = before.estimatedTurns - after.estimatedTurns
+        if turnImprovement >= 2 {
+            penalty -= 520
+        } else if turnImprovement <= 0 {
+            penalty += 360
+        }
+        if hand.count <= 6 {
+            penalty /= 2
+        }
+
+        let deckDiscount = min(42, max(0, state.deckCount - 1) * 16)
+        penalty = penalty * max(58, 100 - deckDiscount) / 100
+        return responsibilityDiscounted(max(0, penalty), maxDiscount: 72)
+    }
+
+    func breaksSameRankBomb(_ action: PlayerAction) -> Bool {
+        let actionRanks = Set(action.cards.map(\.rank))
+        return actionRanks.contains { rank in
+            hand.count(of: rank) >= 3 && action.cards.count(of: rank) < hand.count(of: rank)
+        }
     }
 
     func relaxedStyleAdjustment(

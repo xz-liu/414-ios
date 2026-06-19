@@ -38,6 +38,110 @@ struct PlayedCardsFan: View {
     }
 }
 
+struct RevealedHandStrip: View {
+    let playerName: String
+    let cards: [Card]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let layout = revealedLayout(width: proxy.size.width, height: proxy.size.height, count: cards.count)
+            VStack(spacing: 3) {
+                Text(cards.isEmpty ? "\(playerName) · 已出完" : "\(playerName) · \(cards.count)张")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(cards.isEmpty ? .yellow : .white.opacity(0.90))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+                    .shadow(color: .black.opacity(0.58), radius: 4, y: 2)
+
+                if cards.isEmpty {
+                    Text("WIN")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.yellow)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .shadow(color: .yellow.opacity(0.55), radius: 6)
+                } else {
+                    ZStack(alignment: .topLeading) {
+                        ForEach(layout.rows.indices, id: \.self) { rowIndex in
+                            let row = layout.rows[rowIndex]
+                            HStack(spacing: row.spacing) {
+                                ForEach(row.startIndex..<row.endIndex, id: \.self) { index in
+                                    PlayingCardView(
+                                        card: cards[index],
+                                        selected: false,
+                                        compact: true,
+                                        width: layout.cardWidth,
+                                        height: layout.cardHeight
+                                    )
+                                }
+                            }
+                            .frame(width: proxy.size.width, height: layout.cardHeight, alignment: .center)
+                            .position(x: proxy.size.width / 2, y: row.y + layout.cardHeight / 2)
+                            .zIndex(Double(rowIndex))
+                        }
+                    }
+                    .frame(width: proxy.size.width, height: max(0, proxy.size.height - 15), alignment: .topLeading)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .shadow(color: .black.opacity(0.46), radius: 4, y: 2)
+        }
+    }
+
+    private struct RevealedLayout {
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        let rows: [RevealedRow]
+    }
+
+    private struct RevealedRow {
+        let startIndex: Int
+        let count: Int
+        let y: CGFloat
+        let spacing: CGFloat
+
+        var endIndex: Int {
+            startIndex + count
+        }
+    }
+
+    private func revealedLayout(width: CGFloat, height: CGFloat, count: Int) -> RevealedLayout {
+        guard count > 0 else {
+            return RevealedLayout(cardWidth: 28, cardHeight: 38, rows: [])
+        }
+
+        let rowCount = count > 34 ? 3 : (count > 16 ? 2 : 1)
+        let cardsPerRow = Int(ceil(Double(count) / Double(rowCount)))
+        let cardWidth = min(30, max(18, width / CGFloat(max(cardsPerRow, 1)) * 1.72))
+        let cardHeight = cardWidth * 1.38
+        let availableHeight = max(0, height - 17)
+        let rowStep = rowCount == 1 ? 0 : min(cardHeight + 2, max(cardHeight * 0.52, availableHeight / CGFloat(rowCount)))
+
+        var rows: [RevealedRow] = []
+        var startIndex = 0
+        for rowIndex in 0..<rowCount where startIndex < count {
+            let rowCountValue = min(cardsPerRow, count - startIndex)
+            let spacing = spacing(width: width, cardWidth: cardWidth, count: rowCountValue)
+            rows.append(
+                RevealedRow(
+                    startIndex: startIndex,
+                    count: rowCountValue,
+                    y: CGFloat(rowIndex) * rowStep,
+                    spacing: spacing
+                )
+            )
+            startIndex += rowCountValue
+        }
+
+        return RevealedLayout(cardWidth: cardWidth, cardHeight: cardHeight, rows: rows)
+    }
+
+    private func spacing(width: CGFloat, cardWidth: CGFloat, count: Int) -> CGFloat {
+        guard count > 1 else { return 0 }
+        let visibleStep = (width - cardWidth) / CGFloat(count - 1)
+        return min(2, max(-24, visibleStep - cardWidth))
+    }
+}
+
 struct HandSpreadView: View {
     let cards: [Card]
     let selectedCards: Set<Card>

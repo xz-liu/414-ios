@@ -21,6 +21,7 @@ struct FourFourteenTableView: View {
             if let banner = model.actionBanner {
                 ActionBannerView(banner: banner)
                     .transition(.scale(scale: 0.72).combined(with: .opacity))
+                    .allowsHitTesting(false)
                     .zIndex(10)
             }
         }
@@ -172,11 +173,19 @@ struct FourFourteenTableView: View {
     @ViewBuilder
     private func tablePlaySlot(index: Int, width: CGFloat) -> some View {
         if model.state.players.indices.contains(index) {
-            TablePlaySlotView(
-                playerName: model.state.players[index].name,
-                record: model.tableRecord(for: index)
-            )
-            .frame(width: width, height: 76)
+            if model.state.isGameOver, index != 0, model.state.hands.indices.contains(index) {
+                RevealedHandStrip(
+                    playerName: model.state.players[index].name,
+                    cards: model.state.hands[index]
+                )
+                .frame(width: width, height: 92)
+            } else {
+                TablePlaySlotView(
+                    playerName: model.state.players[index].name,
+                    record: model.tableRecord(for: index)
+                )
+                .frame(width: width, height: 76)
+            }
         } else {
             Color.clear.frame(width: width, height: 76)
         }
@@ -193,6 +202,7 @@ struct FourFourteenTableView: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .shadow(color: .black.opacity(0.55), radius: 8, y: 3)
+                        .allowsHitTesting(false)
 
                     HStack(spacing: 18) {
                         ForEach(model.state.players.indices, id: \.self) { index in
@@ -208,18 +218,26 @@ struct FourFourteenTableView: View {
                             .frame(width: 62, height: 56)
                         }
                     }
+                    .allowsHitTesting(false)
 
                     if model.isWaiting {
                         Button {
                             model.dealNewGame()
                         } label: {
-                            Label("发牌", systemImage: "play.fill")
-                                .font(.headline.weight(.black))
-                                .frame(width: 150, height: 44)
-                                .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
+                            ZStack {
+                                Color.white.opacity(0.001)
+                                Label("发牌", systemImage: "play.fill")
+                                    .font(.headline.weight(.black))
+                                    .frame(width: 150, height: 44)
+                                    .foregroundStyle(Color(red: 1.00, green: 0.56, blue: 0.12))
+                            }
+                            .frame(width: 190, height: 58)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .frame(width: 190, height: 58)
                         .contentShape(Rectangle())
+                        .accessibilityIdentifier("fourFourteenCenterDealButton")
                         .shadow(color: Color.orange.opacity(0.82), radius: 8)
                         .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
                     } else {
@@ -227,10 +245,11 @@ struct FourFourteenTableView: View {
                             .tint(.white)
                     }
 
-                    Text(model.notice.isEmpty ? "选择副牌数后发牌" : model.notice)
+                    Text(model.notice.isEmpty ? "默认\(model.deckCount)副牌，可直接发牌" : model.notice)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.76))
                         .shadow(color: .black.opacity(0.45), radius: 5, y: 2)
+                        .allowsHitTesting(false)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
