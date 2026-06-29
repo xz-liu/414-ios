@@ -56,7 +56,7 @@ final class GuanDanViewModel: ObservableObject {
 
     var canPassPlay: Bool {
         guard phase == .playing, isHumanTurn else { return false }
-        return state.lastPlay != nil && state.lastPlay?.playerIndex != 0
+        return engine.legalActions(for: 0).contains(.pass)
     }
 
     var promptText: String {
@@ -73,7 +73,7 @@ final class GuanDanViewModel: ObservableObject {
             return state.winnerTeam == .teamA ? "你方胜利" : "对方胜利"
         }
         if state.currentPlayerIndex == 0 {
-            return state.lastPlay == nil || state.lastPlay?.playerIndex == 0 ? "你出牌" : "你跟牌或过"
+            return engine.legalActions(for: 0).contains(.pass) ? "你跟牌或过" : "你出牌"
         }
         return "\(state.players[state.currentPlayerIndex].name)思考中"
     }
@@ -184,7 +184,7 @@ final class GuanDanViewModel: ObservableObject {
             return "已出完"
         }
         if state.currentPlayerIndex == playerIndex {
-            return state.lastPlay == nil || state.lastPlay?.playerIndex == playerIndex ? "起手" : "跟牌"
+            return engine.legalActions(for: playerIndex).contains(.pass) ? "跟牌" : "起手"
         }
         if playerIndex == 0 || playerIndex == 2 {
             return "你方"

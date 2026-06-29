@@ -84,7 +84,7 @@ struct DouDizhuTests {
         let state = DouDizhuState(
             players: Self.players,
             hands: [
-                [ddzCard(.five), ddzCard(.six)],
+                [ddzCard(.three), ddzCard(.five)],
                 [ddzCard(.seven)],
                 [ddzCard(.eight)]
             ],
@@ -103,6 +103,9 @@ struct DouDizhuTests {
         #expect(engine.state.currentPlayerIndex == 0)
         #expect(engine.state.lastPlay == nil)
         #expect(engine.state.passCount == 0)
+
+        try engine.applyPlay(.play([ddzCard(.three)]))
+        #expect(engine.state.lastPlay?.combination?.primaryRank == .three)
     }
 
     @Test("first empty hand ends game and scores landlord win")

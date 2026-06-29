@@ -64,7 +64,7 @@ final class DouDizhuViewModel: ObservableObject {
 
     var canPassPlay: Bool {
         guard phase == .playing, isHumanTurn, state.phase == .playing else { return false }
-        return state.lastPlay != nil && state.lastPlay?.playerIndex != 0
+        return engine.legalPlayActions(for: 0).contains(.pass)
     }
 
     var canBid: Bool {
@@ -92,7 +92,7 @@ final class DouDizhuViewModel: ObservableObject {
             return "\(state.players[state.currentPlayerIndex].name)叫地主"
         case .playing:
             if state.currentPlayerIndex == 0 {
-                return state.lastPlay == nil || state.lastPlay?.playerIndex == 0 ? "你出牌" : "你跟牌或过"
+                return engine.legalPlayActions(for: 0).contains(.pass) ? "你跟牌或过" : "你出牌"
             }
             return "\(state.players[state.currentPlayerIndex].name)思考中"
         case .noLandlord:
@@ -216,14 +216,17 @@ final class DouDizhuViewModel: ObservableObject {
         case .playing:
             break
         }
+        if state.phase == .bidding, state.currentPlayerIndex == playerIndex {
+            return state.players[playerIndex].isHuman ? "叫分" : "思考"
+        }
+        if state.phase == .playing, state.currentPlayerIndex == playerIndex {
+            return engine.legalPlayActions(for: playerIndex).contains(.pass) ? "跟牌" : "起手"
+        }
         if state.landlordIndex == playerIndex {
             return "地主"
         }
         if state.landlordIndex != nil {
             return "农民"
-        }
-        if state.phase == .bidding, state.currentPlayerIndex == playerIndex {
-            return state.players[playerIndex].isHuman ? "叫分" : "思考"
         }
         return "等待"
     }

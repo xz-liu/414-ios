@@ -38,7 +38,7 @@ struct GameEngineTests {
         let engine = GameEngine(
             players: Self.players,
             hands: [
-                [card(.five), card(.nine)],
+                [card(.four), card(.five), card(.nine)],
                 [card(.six)],
                 [card(.seven)],
                 [card(.eight)]
@@ -53,6 +53,10 @@ struct GameEngineTests {
 
         #expect(engine.state.prompt.kind == .lead)
         #expect(engine.state.prompt.playerIndex == 0)
+        #expect(engine.state.lastPlayableRecord == nil)
+
+        try engine.apply(.play([card(.four)]))
+        #expect(engine.state.lastPlayableRecord?.combination?.primaryRank == .four)
     }
 
     @Test("two passes return lead in a three-player game")
@@ -60,7 +64,7 @@ struct GameEngineTests {
         let engine = GameEngine(
             players: Self.threePlayers,
             hands: [
-                [card(.five), card(.nine)],
+                [card(.four), card(.five), card(.nine)],
                 [card(.six)],
                 [card(.seven)]
             ],
@@ -73,7 +77,11 @@ struct GameEngineTests {
 
         #expect(engine.state.prompt.kind == .lead)
         #expect(engine.state.prompt.playerIndex == 0)
+        #expect(engine.state.lastPlayableRecord == nil)
         #expect(engine.state.eventLog.last?.message == "2家过牌，Human重新起手")
+
+        try engine.apply(.play([card(.four)]))
+        #expect(engine.state.lastPlayableRecord?.combination?.primaryRank == .four)
     }
 
     @Test("cha and gou transfer lead and cannot be beaten")

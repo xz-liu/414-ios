@@ -274,6 +274,7 @@ private struct AIEvaluator {
     let actions: [PlayerAction]
     let style: AIStyle
     let controlProfile: ControlProfile
+    let publicMemory: PublicCardMemory
     var metricsCache: [String: PlanMetrics] = [:]
 
     init(state: GameState, playerIndex: Int, actions: [PlayerAction], style: AIStyle) {
@@ -281,6 +282,7 @@ private struct AIEvaluator {
         self.playerIndex = playerIndex
         self.actions = actions
         self.style = style
+        self.publicMemory = PublicCardMemory(state: state, playerIndex: playerIndex)
         self.controlProfile = ControlProfile(
             state: state,
             hand: state.hands[playerIndex]
@@ -508,6 +510,7 @@ private struct AIEvaluator {
             default:
                 break
             }
+            cost += publicMemoryControlReserveCost(action, combination: combination)
         }
 
         if isControlAction(action, combination: combination),
@@ -518,6 +521,28 @@ private struct AIEvaluator {
             cost = cost * controlProfile.resourceCostPercent(for: action, combination: combination) / 100
         }
         return cost
+    }
+
+    func publicMemoryControlReserveCost(_ action: PlayerAction, combination: Combination) -> Int {
+        guard style == .competitive,
+              action.cards.count < hand.count,
+              threatContext.defenseResponsibility < 65,
+              combination.isBombLike
+        else { return 0 }
+
+        switch combination.kind {
+        case .sameRankBomb:
+            let canBeBeaten = publicMemory.opponentsCanBeatSameRankBomb(combination) ||
+                publicMemory.opponentsCanHaveDoubleJoker ||
+                publicMemory.opponentsCanHaveRocket414
+            return canBeBeaten ? 0 : 360
+        case .doubleJoker:
+            return publicMemory.opponentsCanHaveRocket414 ? 0 : 520
+        case .rocket414:
+            return 780
+        default:
+            return 0
+        }
     }
 
     func cardResourceValue(_ card: Card) -> Int {
@@ -598,6 +623,7 @@ private struct AIEvaluator {
 
     func singleChaRisk(rank: Rank?) -> Int {
         guard let rank, rank != .smallJoker, rank != .bigJoker else { return 0 }
+        guard publicMemory.opponentsCanCha(rank: rank) else { return 0 }
         let potential = opponentRankPotential(rank)
         guard potential >= 2 else { return 0 }
         var risk = potential * 95 + rank.rawValue * 18
@@ -607,6 +633,7 @@ private struct AIEvaluator {
 
     func gouRisk(rank: Rank?) -> Int {
         guard let rank else { return 0 }
+        guard publicMemory.opponentsCanGou(rank: rank) else { return 0 }
         let potential = opponentRankPotential(rank)
         guard potential > 0 else { return 0 }
         var risk = potential * 190 + rank.rawValue * 20
@@ -618,22 +645,28 @@ private struct AIEvaluator {
     func bombCounterRisk(_ combination: Combination) -> Int {
         guard threatContext.defenseResponsibility < 65 else { return 0 }
         switch combination.kind {
-        case .doubleJoker, .rocket414:
+        case .rocket414:
             return 0
+        case .doubleJoker:
+            return style == .competitive && publicMemory.opponentsCanHaveRocket414 ?
+                pressureDiscounted(620, maxDiscount: 70) :
+                0
         case .sameRankBomb:
             let largerSameCountRanks = Rank.allCases.filter { rank in
                 rank != .smallJoker &&
                     rank != .bigJoker &&
                     rank.rawValue > rankValue(combination.primaryRank) &&
-                    opponentRankPotential(rank) >= combination.sameRankCount
+                    publicMemory.opponentsCanHaveSameRankBomb(rank: rank, count: combination.sameRankCount)
             }.count
             let largerCountRisk = Rank.allCases.contains { rank in
                 rank != .smallJoker &&
                     rank != .bigJoker &&
-                    opponentRankPotential(rank) > combination.sameRankCount
+                    publicMemory.opponentsCanHaveSameRankBomb(rank: rank, count: combination.sameRankCount + 1)
             }
+            let doubleJokerRisk = style == .competitive && publicMemory.opponentsCanHaveDoubleJoker ? 280 : 0
+            let rocketRisk = style == .competitive && publicMemory.opponentsCanHaveRocket414 ? 420 : 0
             return pressureDiscounted(
-                largerSameCountRanks * 120 + (largerCountRisk ? 260 : 0),
+                largerSameCountRanks * 120 + (largerCountRisk ? 260 : 0) + doubleJokerRisk + rocketRisk,
                 maxDiscount: 70
             )
         default:
@@ -1109,12 +1142,7 @@ private struct AIEvaluator {
     }
 
     func opponentRankPotential(_ rank: Rank) -> Int {
-        let totalRankCount = rank == .smallJoker || rank == .bigJoker ? state.deckCount : state.deckCount * 4
-        let alreadyVisible = state.eventLog.reduce(0) { partial, record in
-            partial + (record.combination?.cards.count(of: rank) ?? 0)
-        }
-        let ownCurrent = hand.count(of: rank)
-        return max(0, totalRankCount - alreadyVisible - ownCurrent)
+        publicMemory.opponentAvailableCount(rank)
     }
 
     mutating func planMetrics(for cards: [Card]) -> PlanMetrics {

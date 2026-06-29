@@ -85,6 +85,30 @@ struct RunFastTests {
         }
     }
 
+    @Test("two passes clear the active challenge and allow a lower lead")
+    func passRoundAllowsLowerLead() throws {
+        let engine = RunFastGameEngine(
+            players: Self.players,
+            hands: [
+                [rfCard(.three), rfCard(.five)],
+                [rfCard(.three, .clubs)],
+                [rfCard(.four)]
+            ],
+            startingPlayer: 0
+        )
+
+        try engine.apply(.play([rfCard(.five)]))
+        try engine.apply(.pass)
+        try engine.apply(.pass)
+
+        #expect(engine.state.currentPlayerIndex == 0)
+        #expect(engine.state.lastPlay == nil)
+        #expect(!engine.legalActions(for: 0).contains(.pass))
+
+        try engine.apply(.play([rfCard(.three)]))
+        #expect(engine.state.lastPlay?.combination?.primaryRank == .three)
+    }
+
     @Test("AI chooses a legal action")
     func aiChoosesLegalAction() {
         let engine = RunFastGameEngine()

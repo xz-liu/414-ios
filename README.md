@@ -23,6 +23,19 @@ xcodebuild -project FourFourteen.xcodeproj \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
+## PWA 版本
+
+并行 Web 版本在 `pwa/`，使用 Vite + React + TypeScript + Workbox。它是纯静态 PWA，可部署到 Cloudflare Pages，支持 iPhone 添加到主屏幕和首次加载后的离线运行。
+
+```sh
+cd pwa
+npm ci
+npm run test
+npm run build
+```
+
+Cloudflare Pages 配置：root directory `pwa/`，build command `npm ci && npm run build`，output directory `dist/`。更多安装和离线验证步骤见 `pwa/README.md`。
+
 ## 测试
 
 ```sh
@@ -167,6 +180,7 @@ AI 不是“能出就出”，而是对候选动作做资源评估。它只使�
 - `Sources/CardGameUI/`：可复用牌面、手牌展开、牌桌背景等 UI 组件。
 - `Tests/FourFourteenCoreTests/`：规则、引擎、AI 和性能回归测试。
 - `FourFourteen.xcodeproj/`：iOS App 工程。
+- `pwa/`：Vite + React + TypeScript PWA 子项目，包含四个玩法的 Web 单机版和离线缓存配置。
 - `414-online-master/`：参考工程，不作为当前 App 的构建目标。
 
 ## 规则参考

@@ -39,6 +39,7 @@
 		10100000000000000000001D /* GuanDanTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001E /* GuanDanTableView.swift */; };
 		10100000000000000000001E /* CardGameEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10200000000000000000001F /* CardGameEffect.swift */; };
 		10100000000000000000001F /* TableEffectOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000020 /* TableEffectOverlay.swift */; };
+		101000000000000000000021 /* PublicCardMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102000000000000000000022 /* PublicCardMemory.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +76,7 @@
 		10200000000000000000001E /* GuanDanTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuanDanTableView.swift; sourceTree = "<group>"; };
 		10200000000000000000001F /* CardGameEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardGameEffect.swift; sourceTree = "<group>"; };
 		102000000000000000000020 /* TableEffectOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableEffectOverlay.swift; sourceTree = "<group>"; };
+		102000000000000000000022 /* PublicCardMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicCardMemory.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -137,6 +139,7 @@
 				102000000000000000000008 /* GameEngine.swift */,
 				102000000000000000000009 /* AIPlayer.swift */,
 				10200000000000000000000A /* HintEngine.swift */,
+				102000000000000000000022 /* PublicCardMemory.swift */,
 				10200000000000000000001F /* CardGameEffect.swift */,
 				102000000000000000000012 /* DouDizhuModels.swift */,
 				102000000000000000000013 /* DouDizhuRulesEngine.swift */,
@@ -259,6 +262,7 @@
 				101000000000000000000008 /* GameEngine.swift in Sources */,
 				101000000000000000000009 /* AIPlayer.swift in Sources */,
 				10100000000000000000000A /* HintEngine.swift in Sources */,
+				101000000000000000000021 /* PublicCardMemory.swift in Sources */,
 				10100000000000000000001E /* CardGameEffect.swift in Sources */,
 				101000000000000000000011 /* DouDizhuModels.swift in Sources */,
 				101000000000000000000012 /* DouDizhuRulesEngine.swift in Sources */,

@@ -108,6 +108,32 @@ struct GuanDanTests {
         #expect(Set(action.cards) == Set(pairSix))
     }
 
+    @Test("pass round clears the active challenge and allows a lower lead")
+    func passRoundAllowsLowerLead() throws {
+        let engine = GuanDanGameEngine(
+            players: Self.players,
+            hands: [
+                [gdCard(.three), gdCard(.five)],
+                [gdCard(.three, .clubs)],
+                [gdCard(.four)],
+                [gdCard(.four, .clubs)]
+            ],
+            startingPlayer: 0
+        )
+
+        try engine.apply(.play([gdCard(.five)]))
+        try engine.apply(.pass)
+        try engine.apply(.pass)
+        try engine.apply(.pass)
+
+        #expect(engine.state.currentPlayerIndex == 0)
+        #expect(engine.state.lastPlay == nil)
+        #expect(!engine.legalActions(for: 0).contains(.pass))
+
+        try engine.apply(.play([gdCard(.three)]))
+        #expect(engine.state.lastPlay?.combination?.primaryRank == .three)
+    }
+
     @Test("AI self play finishes shuffled guandan rounds")
     func aiSelfPlayFinishes() throws {
         let ai = GuanDanAIPlayer()

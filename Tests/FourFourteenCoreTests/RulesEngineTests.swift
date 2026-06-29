@@ -95,6 +95,55 @@ struct RulesEngineTests {
         #expect(RulesEngine.canBeat(pairRun445566, pairRun334455))
     }
 
+    @Test("triad attachments do not collapse into bombs or unrelated shapes")
+    func classifiesAndComparesTriadAttachments() throws {
+        let triadWithSingle = try #require(RulesEngine.classify([
+            c(.three, .hearts),
+            c(.three, .clubs),
+            c(.three, .spades),
+            c(.four, .hearts)
+        ]))
+        let higherTriadWithSingle = try #require(RulesEngine.classify([
+            c(.four, .diamonds),
+            c(.four, .clubs),
+            c(.four, .spades),
+            c(.five, .hearts)
+        ]))
+        let triadWithPair = try #require(RulesEngine.classify([
+            c(.three, .hearts),
+            c(.three, .clubs),
+            c(.three, .spades),
+            c(.four, .hearts),
+            c(.four, .clubs)
+        ]))
+        let fourBomb = try #require(RulesEngine.classify([
+            c(.three, .hearts),
+            c(.three, .clubs),
+            c(.three, .spades),
+            c(.three, .diamonds)
+        ]))
+        let threeBomb = try #require(RulesEngine.classify([
+            c(.six, .hearts),
+            c(.six, .clubs),
+            c(.six, .spades)
+        ]))
+
+        #expect(triadWithSingle.kind == .triadWithSingle)
+        #expect(triadWithPair.kind == .triadWithPair)
+        #expect(fourBomb.kind == .sameRankBomb)
+        #expect(RulesEngine.classify([
+            c(.three, .hearts),
+            c(.three, .clubs),
+            c(.three, .spades),
+            c(.four, .hearts),
+            c(.five, .clubs)
+        ]) == nil)
+        #expect(RulesEngine.canBeat(higherTriadWithSingle, triadWithSingle))
+        #expect(!RulesEngine.canBeat(triadWithPair, triadWithSingle))
+        #expect(!RulesEngine.canBeat(threeBomb, triadWithSingle))
+        #expect(RulesEngine.canBeat(fourBomb, triadWithSingle))
+    }
+
     @Test("three-card bombs beat single dragons but not pair dragons or triad attachments")
     func comparesSmallAndLargeBombsAgainstOrdinaryCombinations() throws {
         let singleRun345 = try #require(RulesEngine.classify([

@@ -7,6 +7,12 @@
 .build/
 .swiftpm/
 
+# Web / PWA
+node_modules/
+pwa/node_modules/
+pwa/dist/
+*.tsbuildinfo
+
 # Xcode
 build/
 DerivedData/

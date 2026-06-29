@@ -35,6 +35,7 @@ private extension HintEngine {
         let handCount = state.hands.indices.contains(playerIndex) ? state.hands[playerIndex].count : 0
         let playable = legalActions.filter { !$0.cards.isEmpty }
         guard !playable.isEmpty else { return nil }
+        let publicMemory = PublicCardMemory(state: state, playerIndex: playerIndex)
 
         if let finishing = playable.first(where: { $0.cards.count == handCount }) {
             return finishing
@@ -53,11 +54,13 @@ private extension HintEngine {
             }
         case .follow:
             return playable.sorted { lhs, rhs in
-                followHintScore(lhs) < followHintScore(rhs)
+                followHintScore(lhs, state: state, memory: publicMemory) <
+                    followHintScore(rhs, state: state, memory: publicMemory)
             }.first
         case .lead:
             return playable.sorted { lhs, rhs in
-                leadHintScore(lhs, handCount: handCount) < leadHintScore(rhs, handCount: handCount)
+                leadHintScore(lhs, handCount: handCount, memory: publicMemory) <
+                    leadHintScore(rhs, handCount: handCount, memory: publicMemory)
             }.first
         case .gameOver:
             return nil
@@ -71,17 +74,21 @@ private extension HintEngine {
         return legalActionCount > 48
     }
 
-    static func followHintScore(_ action: PlayerAction) -> Int {
+    static func followHintScore(_ action: PlayerAction, state: GameState, memory: PublicCardMemory) -> Int {
         guard let combination = combination(for: action) else { return Int.max }
         var score = RulesEngine.combinationSortScore(combination)
         if combination.isBombLike {
             score += 80_000
+            if state.lastPlayableRecord?.combination?.isBombLike == true {
+                score += controlSpendScore(combination) / 4
+            }
+            score += publicMemoryReservePenalty(for: combination, memory: memory)
         }
         score += action.cards.reduce(0) { $0 + controlPenalty(for: $1) }
         return score
     }
 
-    static func leadHintScore(_ action: PlayerAction, handCount: Int) -> Int {
+    static func leadHintScore(_ action: PlayerAction, handCount: Int, memory: PublicCardMemory) -> Int {
         guard let combination = combination(for: action) else { return Int.max }
         if action.cards.count == handCount {
             return -100_000
@@ -100,9 +107,9 @@ private extension HintEngine {
         case .triadWithSingle, .triadWithPair:
             score += handCount <= 7 ? -300 : 6_000
         case .sameRankBomb:
-            score += 24_000
+            score += 24_000 + publicMemoryReservePenalty(for: combination, memory: memory) / 2
         case .doubleJoker:
-            score += 28_000
+            score += 28_000 + publicMemoryReservePenalty(for: combination, memory: memory) / 2
         case .rocket414:
             score += 32_000
         case .cha, .gou:
@@ -110,6 +117,36 @@ private extension HintEngine {
         }
         score += action.cards.reduce(0) { $0 + controlPenalty(for: $1) }
         return score
+    }
+
+    static func publicMemoryReservePenalty(for combination: Combination, memory: PublicCardMemory) -> Int {
+        switch combination.kind {
+        case .sameRankBomb:
+            let canBeBeaten = memory.opponentsCanBeatSameRankBomb(combination) ||
+                memory.opponentsCanHaveDoubleJoker ||
+                memory.opponentsCanHaveRocket414
+            return canBeBeaten ? 0 : 2_400
+        case .doubleJoker:
+            return memory.opponentsCanHaveRocket414 ? 0 : 3_400
+        case .rocket414:
+            return 4_600
+        default:
+            return 0
+        }
+    }
+
+    static func controlSpendScore(_ combination: Combination) -> Int {
+        let cardCost = combination.cards.reduce(0) { $0 + controlPenalty(for: $1) }
+        switch combination.kind {
+        case .sameRankBomb:
+            return 10_000 + combination.sameRankCount * 2_200 + (combination.primaryRank?.rawValue ?? 0) * 120 + cardCost
+        case .doubleJoker:
+            return 45_000 + cardCost
+        case .rocket414:
+            return 55_000 + cardCost
+        default:
+            return RulesEngine.combinationSortScore(combination) + cardCost
+        }
     }
 
     static func combination(for action: PlayerAction) -> Combination? {
